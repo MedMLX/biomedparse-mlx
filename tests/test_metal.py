@@ -1,0 +1,72 @@
+"""Native numerical boundaries with an independent installed Torch oracle."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Protocol, cast
+
+import numpy as np
+import pytest
+
+from biomedparse_mlx.dependency_types import callable_member
+from biomedparse_mlx.ontology import ModelConfig
+from tests.torch_types import from_numpy, interpolate, numpy_float
+
+pytestmark = [pytest.mark.metal, pytest.mark.usefixtures("metal_runtime")]
+
+
+@pytest.mark.parametrize(
+    "mode,aa", [("nearest", False), ("bilinear", False), ("bicubic", False), ("bicubic", True)]
+)
+@pytest.mark.parametrize(
+    "shape,size", [((2, 7, 9, 3), (13, 11)), ((1, 9, 7, 1), (4, 3)), ((1, 1, 3, 2), (5, 7))]
+)
+def test_resize_matches_torch(
+    mode: str, aa: bool, shape: tuple[int, ...], size: tuple[int, int]
+) -> None:
+    """Compare native NHWC resize modes with the installed Torch oracle."""
+    pytest.importorskip("torch")
+    import mlx.core as mx
+
+    from biomedparse_mlx.resize import ResizeMode, resize
+
+    values = np.random.default_rng(7).normal(size=shape).astype(np.float32)
+    kwargs = {} if mode == "nearest" else {"align_corners": False, "antialias": aa}
+    expected = interpolate(from_numpy(values.transpose(0, 3, 1, 2)), size=size, mode=mode, **kwargs)
+    actual = resize(mx.array(values), size, ResizeMode(mode), antialias=aa)
+    np.testing.assert_allclose(
+        np.array(actual, dtype=np.float32),
+        numpy_float(expected).transpose(0, 2, 3, 1),
+        atol=5e-6,
+        rtol=5e-5,
+    )
+
+
+def test_strict_loader_rejects_other_formats_and_missing_tensors(
+    tiny_config: ModelConfig, tmp_path: Path
+) -> None:
+    """Load saved safetensors strictly; reject NPZ weights and a missing tensor."""
+    import mlx.core as mx
+
+    from biomedparse_mlx.mlx_types import flatten_parameters
+    from biomedparse_mlx.model import build_model, load_model
+
+    model = build_model(tiny_config)
+    weights = tmp_path / "tiny.safetensors"
+    model.save_weights(str(weights))
+    load_model(weights, tiny_config)
+    legacy = tmp_path / "tiny.npz"
+    model.save_weights(str(legacy))
+    with pytest.raises(RuntimeError):
+        load_model(legacy, tiny_config)
+    parameters = dict(flatten_parameters(model.parameters()))
+    parameters.pop("pixel_mean")
+
+    class Writer(Protocol):
+        def __call__(self, path: str, arrays: dict[str, mx.array]) -> None:
+            """Write a named MLX tensor mapping as safetensors."""
+            ...
+
+    cast(Writer, callable_member(mx, "save_safetensors"))(str(weights), parameters)
+    with pytest.raises(ValueError):
+        load_model(weights, tiny_config)
