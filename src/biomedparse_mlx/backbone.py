@@ -5,7 +5,7 @@ from __future__ import annotations
 import mlx.core as mx
 import mlx.nn as nn
 
-from biomedparse_mlx.mlx_types import gelu
+from biomedparse_mlx.mlx_types import compile_array_function, gelu
 from biomedparse_mlx.ontology import ModelConfig
 
 
@@ -79,9 +79,14 @@ class FocalBlock(nn.Module):
         self.mlp = Mlp(width)
         self.gamma_1 = mx.full((width,), 1e-4)
         self.gamma_2 = mx.full((width,), 1e-4)
+        # Fusing the block's elementwise work is exact; the state stays a live input.
+        self._compiled = compile_array_function(self._apply, inputs=self.state)
 
     def __call__(self, values: mx.array) -> mx.array:
         """Apply scaled, normalized modulation and MLP residuals."""
+        return self._compiled(values)
+
+    def _apply(self, values: mx.array) -> mx.array:
         values = values + self.gamma_1 * self.norm1(self.modulation(values))
         return values + self.gamma_2 * self.norm2(self.mlp(values))
 

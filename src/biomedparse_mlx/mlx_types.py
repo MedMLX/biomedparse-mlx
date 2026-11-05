@@ -36,9 +36,26 @@ class ArrayEvaluator(Protocol):
         ...
 
 
+class ArrayFunction(Protocol):
+    """Typed signature for a one-array MLX function."""
+
+    def __call__(self, values: mx.array, /) -> mx.array:
+        """Map one MLX array to another."""
+        ...
+
+
+class ArrayCompiler(Protocol):
+    """Typed signature for ``mx.compile`` over a one-array function and captured state."""
+
+    def __call__(self, fun: ArrayFunction, inputs: ParameterTree | None = None) -> ArrayFunction:
+        """Compile ``fun``, reading ``inputs`` as live state on every call."""
+        ...
+
+
 # MLX accepts NumPy's DLPack arrays, and eval accepts nested array sequences.
 from_numpy = cast(ArrayFactory, mx.array)
 evaluate = cast(ArrayEvaluator, callable_member(mx, "eval"))
+compile_array_function = cast(ArrayCompiler, callable_member(mx, "compile"))
 gelu = nn.gelu
 relu = nn.relu
 flatten_parameters = cast(
