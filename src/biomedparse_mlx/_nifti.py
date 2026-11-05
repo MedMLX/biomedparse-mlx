@@ -22,14 +22,6 @@ class ArrayBuffer(Protocol):
 
 
 class NiftiHeader(Protocol):
-    def get_zooms(self) -> tuple[float, ...]:
-        """Return the voxel spacing recorded in the image header."""
-        ...
-
-    def get_xyzt_units(self) -> tuple[str, str]:
-        """Return spatial and temporal unit names from the header."""
-        ...
-
     def set_xyzt_units(self, xyz: str) -> None:
         """Set the spatial unit name in the header."""
         ...
@@ -38,13 +30,8 @@ class NiftiHeader(Protocol):
         """Read a named header field."""
         ...
 
-    def __setitem__(self, key: str, value: int) -> None:
-        """Set an integer-valued header field."""
-        ...
-
 
 class NiftiImage(Protocol):
-    shape: tuple[int, ...]
     affine: NDArray[np.float64]
     dataobj: ArrayBuffer | NDArray[np.generic]
     header: NiftiHeader
