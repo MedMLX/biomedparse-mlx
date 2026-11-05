@@ -56,14 +56,20 @@ def load_dicom_slice(path: Path, *, modality: Modality, ct_site: str | None) -> 
 
     Raises:
         FileNotFoundError: ``path`` is not a file.
-        ValueError: The dataset has no rescale slope or intercept, or the pixel
+        ValueError: The file is not DICOM (no File Meta header or ``DICM``
+            prefix), the dataset has no rescale slope or intercept, or the pixel
             data is not a single 2D slice that windowing accepts.
     """
+    from pydicom.errors import InvalidDicomError
+
     from biomedparse_mlx._dicom import dicom
 
     if not path.is_file():
         raise FileNotFoundError(f"Input DICOM not found: {path}")
-    dataset = dicom.dcmread(path.as_posix())
+    try:
+        dataset = dicom.dcmread(path.as_posix())
+    except InvalidDicomError as error:
+        raise ValueError(f"{path} is not a DICOM file: {error}") from error
     try:
         intensities = dataset.pixel_array * dataset.RescaleSlope + dataset.RescaleIntercept
     except AttributeError as error:

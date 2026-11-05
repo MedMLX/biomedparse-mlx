@@ -82,8 +82,12 @@ def load_nifti_volume(
     if np.iscomplexobj(raw):
         raise ValueError("Input NIfTI must contain real intensities")
     data = np.asarray(raw, dtype=np.float64)
-    if data.ndim != 3:
-        raise ValueError(f"Input NIfTI must be a single 3D volume; got shape {data.shape}")
+    # Reject empty axes here: axis_from_shape and per-slice windowing run before
+    # Volume's own nonempty check.
+    if data.ndim != 3 or min(data.shape) < 1:
+        raise ValueError(
+            f"Input NIfTI must be a single nonempty 3D volume; got shape {data.shape}"
+        )
     if not np.isfinite(data).all():
         raise ValueError("Input NIfTI contains non-finite voxels")
     affine = np.array(image.affine, dtype=np.float64, copy=True)

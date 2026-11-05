@@ -147,6 +147,7 @@ def paired_prediction(
 
 def test_full_graph_seeded_upstream(tiny_config: ModelConfig) -> None:
     """Compare a seeded small native graph with the matching upstream graph."""
+    pytest.importorskip("torch")
     import mlx.core as mx
     import torch
 
@@ -196,6 +197,7 @@ def test_full_graph_seeded_upstream(tiny_config: ModelConfig) -> None:
 
 def test_released_checkpoint_example() -> None:
     """Compare released checkpoint predictions on the upstream CT example."""
+    pytest.importorskip("torch")
     import torch
 
     from biomedparse_mlx.model import load_model

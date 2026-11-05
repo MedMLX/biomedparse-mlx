@@ -47,8 +47,14 @@ class ArrayFunction(Protocol):
 class ArrayCompiler(Protocol):
     """Typed signature for ``mx.compile`` over a one-array function and captured state."""
 
-    def __call__(self, fun: ArrayFunction, inputs: ParameterTree | None = None) -> ArrayFunction:
-        """Compile ``fun``, reading ``inputs`` as live state on every call."""
+    def __call__(
+        self, fun: ArrayFunction, inputs: ParameterTree | nn.Module | None = None
+    ) -> ArrayFunction:
+        """Compile ``fun``, reading ``inputs`` as live state on every call.
+
+        ``inputs`` may be a module's ``state``: an ``nn.Module`` is itself the
+        dict tree that ``mx.compile`` captures.
+        """
         ...
 
 
