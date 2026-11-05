@@ -5,6 +5,7 @@ from __future__ import annotations
 import mlx.core as mx
 import mlx.nn as nn
 
+from biomedparse_mlx.depthwise import depthwise_conv
 from biomedparse_mlx.mlx_types import compile_array_function, gelu
 from biomedparse_mlx.ontology import ModelConfig
 
@@ -59,7 +60,12 @@ class FocalModulation(nn.Module):
         gates = projected[..., 2 * self._width :]
         total = mx.zeros_like(context)
         for i, layer in enumerate(self.focal_layers):
-            context = gelu(layer[0](context))
+            conv = layer[0]
+            # MLX's depthwise kernel stops at 7x7; larger filters take the exact replacement.
+            filtered = (
+                depthwise_conv(context, conv.weight) if conv.weight.shape[1] > 7 else conv(context)
+            )
+            context = gelu(filtered)
             total = total + context * gates[..., i : i + 1]
         # Preserve the source's two reductions, rather than changing summation order.
         global_context = gelu(context.mean(axis=1, keepdims=True).mean(axis=2, keepdims=True))

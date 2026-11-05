@@ -70,3 +70,22 @@ def test_strict_loader_rejects_other_formats_and_missing_tensors(
     cast(Writer, callable_member(mx, "save_safetensors"))(str(weights), parameters)
     with pytest.raises(ValueError):
         load_model(weights, tiny_config)
+
+
+@pytest.mark.parametrize("shape", [(1, 13, 11, 12), (2, 16, 9, 20)])
+def test_large_depthwise_conv_matches_mlx_bits(shape: tuple[int, int, int, int]) -> None:
+    """Match MLX's 9x9 depthwise conv bit for bit, with partial tiles and non-finite values."""
+    import mlx.core as mx
+
+    from biomedparse_mlx.depthwise import depthwise_conv
+
+    rng = np.random.default_rng(3)
+    values = rng.normal(size=shape).astype(np.float32)
+    special = np.array([np.nan, np.inf, -np.inf, 1e-40, -0.0, 3e38], np.float32)
+    values.reshape(-1)[rng.choice(values.size, special.size, replace=False)] = special
+    weight = mx.array(rng.normal(size=(shape[-1], 9, 9, 1)).astype(np.float32))
+    expected = mx.conv2d(mx.array(values), weight, padding=4, groups=shape[-1])
+    actual = depthwise_conv(mx.array(values), weight)
+    np.testing.assert_array_equal(
+        np.array(actual).view(np.uint32), np.array(expected).view(np.uint32)
+    )
