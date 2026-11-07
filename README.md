@@ -21,6 +21,8 @@ Segment 3D medical images from text prompts with Microsoft BioMedParse v2 and na
 | :--- | :--- |
 | Medical image + text prompts | Labeled segmentation |
 
+Weights: 1.5 GB download. Peak MLX memory: 3.8 GB for four organ prompts on a 768×768×101 abdominal CT.
+
 ## Use with MedMLX
 
 The [MedMLX MCP server](https://github.com/MedMLX/medmlx/blob/main/docs/mcp.md) is the lowest-friction way to use this model. It installs this runtime, downloads its weights on first use, and lets an AI agent describe, check and run `biomedparse-v2` for you.

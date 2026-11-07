@@ -28,6 +28,8 @@ MODEL = {
     "label": "BioMedParse v2",
     "task": "segmentation",
     "run": "biomedparse_mlx.medmlx:run",
+    # Measured MLX peak for four prompts on a 768x768x101 abdominal CT; larger inputs need more.
+    "peak_memory_gb": 3.9,
     "summary": "Text-guided 3D segmentation with native MLX and slice existence classification.",
 }
 
@@ -283,7 +285,7 @@ def run(
                 allow_pickle=False,
             )
             receipt = RunReceipt(
-                MODEL["id"],
+                model_config().id,
                 model_config().source_revision,
                 prompts,
                 image_result.backend.value,
@@ -332,7 +334,7 @@ def run(
                     allow_pickle=False,
                 )
             receipt = RunReceipt(
-                MODEL["id"],
+                model_config().id,
                 model_config().source_revision,
                 prompts,
                 result.backend.value,
