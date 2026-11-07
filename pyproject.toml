@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "biomedparse-mlx"
-version = "0.1.5"
+version = "0.1.6"
 description = "Segment 3D medical images from text prompts with Microsoft BioMedParse v2 and native MLX"
 readme = "README.md"
 classifiers = [
@@ -38,7 +38,7 @@ authors = [
 ]
 requires-python = ">=3.13,<3.14"
 dependencies = [
-  "medmlx-core==0.2.6",
+  "medmlx-core>=0.2.6,<0.3",
   "mlx==0.32.4; platform_system == 'Darwin' and platform_machine == 'arm64'",
   "numpy>=2,<3",
   "tokenizers>=0.22,<0.23",
@@ -50,7 +50,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://medmlx.org"
-Documentation = "https://github.com/MedMLX/biomedparse-mlx/blob/v0.1.5/README.md"
+Documentation = "https://github.com/MedMLX/biomedparse-mlx/blob/v0.1.6/README.md"
 Repository = "https://github.com/MedMLX/biomedparse-mlx"
 Issues = "https://github.com/MedMLX/biomedparse-mlx/issues"
 Weights = "https://huggingface.co/MedMLX/biomedparse-v2-mlx"

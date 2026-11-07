@@ -6,14 +6,14 @@ Segment 3D medical images from text prompts with Microsoft BioMedParse v2 and na
 
 [![PyPI](https://img.shields.io/pypi/v/biomedparse-mlx)](https://pypi.org/project/biomedparse-mlx/)
 [![Python](https://img.shields.io/pypi/pyversions/biomedparse-mlx)](https://pypi.org/project/biomedparse-mlx/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue)](https://github.com/MedMLX/biomedparse-mlx/blob/v0.1.5/LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue)](https://github.com/MedMLX/biomedparse-mlx/blob/v0.1.6/LICENSE)
 [![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-MLX-black?logo=apple)](https://github.com/ml-explore/mlx)
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97_Hugging_Face-weights-yellow)](https://huggingface.co/MedMLX/biomedparse-v2-mlx)
 [![MedMLX](https://img.shields.io/badge/MedMLX-runtime-A51C30)](https://github.com/MedMLX/medmlx)
 
 [Model weights](https://huggingface.co/MedMLX/biomedparse-v2-mlx) · [MedMLX](https://github.com/MedMLX/medmlx)
 
-<img src="https://raw.githubusercontent.com/MedMLX/biomedparse-mlx/v0.1.5/docs/example-abdomen.png" alt="Abdominal CT segmented from four text prompts: liver, spleen and both kidneys" width="100%">
+<img src="https://raw.githubusercontent.com/MedMLX/biomedparse-mlx/v0.1.6/docs/example-abdomen.png" alt="Abdominal CT segmented from four text prompts: liver, spleen and both kidneys" width="100%">
 
 </div>
 
@@ -43,7 +43,7 @@ For Codex, use `codex mcp add medmlx -- "$MEDMLX" serve --root "$HOME/medmlx-wor
 ```bash
 uv venv --python 3.13
 source .venv/bin/activate
-uv pip install "biomedparse-mlx>=0.1.5"
+uv pip install "biomedparse-mlx>=0.1.6"
 ```
 
 ## Run
@@ -131,6 +131,6 @@ has no CPU fallback.
 
 ## License
 
-[Apache-2.0](https://github.com/MedMLX/biomedparse-mlx/blob/v0.1.5/LICENSE). See [third-party notices](https://github.com/MedMLX/biomedparse-mlx/blob/v0.1.5/THIRD_PARTY_NOTICES.md). Model weights retain their publisher terms. BioMedParse weights are CC-BY-NC-SA-4.0.
+[Apache-2.0](https://github.com/MedMLX/biomedparse-mlx/blob/v0.1.6/LICENSE). See [third-party notices](https://github.com/MedMLX/biomedparse-mlx/blob/v0.1.6/THIRD_PARTY_NOTICES.md). Model weights retain their publisher terms. BioMedParse weights are CC-BY-NC-SA-4.0.
 
 For research and education. Outputs require human review.
