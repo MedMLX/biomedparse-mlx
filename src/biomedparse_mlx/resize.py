@@ -28,6 +28,23 @@ def _cubic(distance: NDArray[np.float64 | np.float32], coefficient: float) -> ND
     return np.where(x < 1, inner, np.where(x < 2, outer, 0)).astype(np.float32)
 
 
+def nearest_indices(source: int, target: int) -> NDArray[np.intp]:
+    """Source indices of Torch's legacy ``nearest`` resize along one axis.
+
+    ATen copies equal sizes, halves exact 2x upsampling with a shift, and
+    otherwise floors ``index * scale`` in float32 with ``scale = source / target``
+    also in float32. Float64 arithmetic picks the neighboring source index for
+    some sizes (for example 512 to 218), so the float32 steps are kept.
+    """
+    if target == source:
+        return np.arange(target)
+    if target == 2 * source:
+        return np.arange(target) >> 1
+    scale = np.float32(source) / np.float32(target)
+    index = np.floor(np.arange(target, dtype=np.float32) * scale).astype(np.intp)
+    return np.minimum(index, source - 1)
+
+
 def _weights(
     source: int,
     target: int,
@@ -38,7 +55,7 @@ def _weights(
     scale = np.float32(source / target)
     center = (np.arange(target, dtype=np.float32) + np.float32(0.5)) * scale
     if mode is ResizeMode.NEAREST:
-        index = np.floor(np.arange(target, dtype=np.float32) * scale).astype(np.int32)
+        index = nearest_indices(source, target).astype(np.int32)
         return from_numpy(index[:, None]), mx.ones((target, 1))
     if mode is ResizeMode.BILINEAR:
         position = np.maximum(center - np.float32(0.5), 0)
@@ -62,6 +79,76 @@ def _weights(
         index = np.floor(position).astype(np.int32)[:, None] + np.arange(-1, 3, dtype=np.int32)
         weight = _cubic(position[:, None] - index, -0.75)
     return from_numpy(np.clip(index, 0, source - 1)), from_numpy(weight.astype(np.float32))
+
+
+def _uint8_bicubic_weights(
+    source: int, target: int
+) -> tuple[NDArray[np.intp], NDArray[np.int32], int]:
+    """Fixed-point taps of Torch's CPU uint8 bicubic resize for one axis.
+
+    Keys a=-0.75 at half-pixel positions in float64, with out-of-range taps
+    clamped to the border and merged into a four-wide window. Weights are rounded
+    to the largest fixed-point precision whose biggest weight still fits int16,
+    as ATen's separable uint8 kernel does. ATen floors the position with
+    ``floorf`` (after rounding it to float32) and clamps the fraction to [0, 1],
+    which matters where a position lies just below an integer. Returns source
+    indices ``(target, 4)``, integer weights ``(target, 4)`` and that precision
+    in bits.
+    """
+    position = (np.arange(target, dtype=np.float64) + 0.5) * (source / target) - 0.5
+    floor = np.minimum(np.floor(position.astype(np.float32)).astype(np.intp), source - 1)
+    fraction = np.clip(position - floor, 0.0, 1.0)
+    taps = floor[:, None] + np.arange(-1, 3)
+    x = np.abs(fraction[:, None] - np.arange(-1, 3))
+    a = -0.75
+    weight = np.where(
+        x < 1,
+        ((a + 2) * x - (a + 3)) * x * x + 1,
+        np.where(x < 2, ((a * x - 5 * a) * x + 8 * a) * x - 4 * a, 0.0),
+    )
+    clamped = np.clip(taps, 0, source - 1)
+    start = clamped[:, :1]
+    merged = np.zeros_like(weight)
+    # ATen tracks the largest weight while it merges border taps, so partial sums
+    # count toward the precision choice as well as the final weights.
+    largest = 0.0
+    rows = np.arange(target)
+    for tap in range(4):
+        slot = clamped[:, tap] - start[:, 0]
+        merged[rows, slot] += weight[:, tap]
+        largest = max(largest, float(merged[rows, slot].max()))
+    precision = 0
+    while precision < 22 and int(0.5 + largest * (1 << (precision + 1))) < (1 << 15):
+        precision += 1
+    fixed = np.trunc(merged * (1 << precision) + np.copysign(0.5, merged)).astype(np.int32)
+    index = np.minimum(start + np.arange(4), source - 1)
+    return index, fixed, precision
+
+
+def resize_uint8_bicubic(values: NDArray[np.uint8], size: tuple[int, int]) -> NDArray[np.uint8]:
+    """Resize a uint8 NHWC batch as ``F.interpolate(..., mode="bicubic")`` does on CPU uint8.
+
+    Upstream BiomedParse resizes its uint8 volumes this way before casting to
+    int. Unlike the float kernel, ATen resizes width then height in separate
+    fixed-point passes, rounding and clamping to 0..255 after each one, so
+    results differ from a rounded float bicubic resize near strong edges. Host
+    preprocessing, before the model runs on Metal.
+
+    Raises:
+        ValueError: ``values`` is not a 4D uint8 array or ``size`` is not positive.
+    """
+    if values.ndim != 4 or values.dtype != np.uint8 or min(size) < 1:
+        raise ValueError("resize_uint8_bicubic requires uint8 NHWC input and a positive size")
+    result = values
+    for axis, target in ((2, size[1]), (1, size[0])):
+        if result.shape[axis] == target:
+            continue
+        index, weight, precision = _uint8_bicubic_weights(result.shape[axis], target)
+        moved = np.moveaxis(result, axis, -1).astype(np.int32)
+        total = (moved[..., index] * weight).sum(axis=-1)
+        rounded = (total + (1 << (precision - 1))) >> precision
+        result = np.moveaxis(np.clip(rounded, 0, 255).astype(np.uint8), -1, axis)
+    return result
 
 
 def resize(

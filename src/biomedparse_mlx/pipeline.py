@@ -162,9 +162,12 @@ def segment_volume(
         whose ``existence_probabilities`` is float32 ``(prompts, slices)`` along
         the slicing axis. ``instances`` is set only when requested.
 
-    Each square-padded slice batch is bicubically resized to the model size,
-    then cast to int32 and back to float32 before inference. The resize can
-    overshoot the original 0..255 range; the cast does not clip it.
+    Each square-padded slice batch is bicubically resized to the model size as
+    upstream's ``process_input`` does with ``F.interpolate``. A uint8 volume (the
+    upstream NPZ format) takes Torch's uint8 kernel, which rounds and clamps to
+    0..255 after each axis (``resize_uint8_bicubic``). Any other dtype is resized
+    in float32 and cast to int32 and back, as upstream's ``.int()`` does; that
+    resize can overshoot 0..255 and the cast does not clip it.
 
     Raises:
         ValueError: Invalid batch size, threshold, seed or prompts, or instance
@@ -185,7 +188,7 @@ def segment_volume(
 
     from biomedparse_mlx.mlx_types import evaluate, from_numpy
     from biomedparse_mlx.model import load_model
-    from biomedparse_mlx.resize import ResizeMode, resize
+    from biomedparse_mlx.resize import ResizeMode, resize, resize_uint8_bicubic
     from biomedparse_mlx.text import encode_prompts
 
     mx = import_mlx()
@@ -207,9 +210,14 @@ def segment_volume(
         if cancelled is not None and cancelled():
             raise InterruptedError("BioMedParse inference cancelled")
         stop = min(start + slice_batch_size, depth)
-        images = from_numpy(neighboring_batch(volume, geometry, start, stop), dtype=mx.float32)
-        images = resize(images, (config.image_size, config.image_size), ResizeMode.BICUBIC)
-        images = images.astype(mx.int32).astype(mx.float32)
+        pixels = neighboring_batch(volume, geometry, start, stop)
+        model_size = (config.image_size, config.image_size)
+        if pixels.dtype == np.uint8:
+            resized = resize_uint8_bicubic(pixels.astype(np.uint8, copy=False), model_size)
+            images = from_numpy(resized, dtype=mx.float32)
+        else:
+            images = resize(from_numpy(pixels, dtype=mx.float32), model_size, ResizeMode.BICUBIC)
+            images = images.astype(mx.int32).astype(mx.float32)
         prediction = (
             model(images, features)
             if prompt_batch_size is None

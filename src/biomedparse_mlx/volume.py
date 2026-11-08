@@ -168,13 +168,16 @@ def neighboring_batch(
 def restore_labels(labels: NDArray[np.uint16], geometry: VolumeGeometry) -> NDArray[np.uint16]:
     """Map ``(depth, S', S')`` labels on the model grid back to the source array.
 
-    Nearest-neighbor resize to the padded square side, remove the padding, and move
-    the slice axis back, returning the original ``geometry.original_shape``.
+    Nearest-neighbor resize to the padded square side (Torch's legacy ``nearest``,
+    as upstream's ``process_output``), remove the padding, and move the slice axis
+    back, returning the original ``geometry.original_shape``.
     """
+    from biomedparse_mlx.resize import nearest_indices
+
     source_h, source_w = labels.shape[-2:]
     target = geometry.square_size
-    rows = np.floor(np.arange(target) * source_h / target).astype(int)
-    columns = np.floor(np.arange(target) * source_w / target).astype(int)
+    rows = nearest_indices(source_h, target)
+    columns = nearest_indices(source_w, target)
     restored = labels[:, rows[:, None], columns]
     (top, _), (left, _) = geometry.padding
     height, width = geometry.plane_shape

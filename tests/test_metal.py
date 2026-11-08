@@ -42,6 +42,46 @@ def test_resize_matches_torch(
     )
 
 
+@pytest.mark.parametrize("source,target", [(218, 512), (669, 512), (513, 512), (321, 37)])
+def test_uint8_bicubic_resize_matches_torch_uint8_kernel(source: int, target: int) -> None:
+    """Upstream resizes uint8 volumes with Torch's uint8 kernel, which clamps per axis."""
+    pytest.importorskip("torch")
+    from biomedparse_mlx.resize import resize_uint8_bicubic
+
+    rng = np.random.default_rng(source)
+    # Smooth anatomy-like background with hard 0/255 edges, where clamping matters.
+    yy, xx = np.mgrid[:source, :source] / source
+    base = 120 + 80 * np.sin(6 * xx) * np.cos(4 * yy) + rng.normal(0, 12, (source, source))
+    base[source // 4 : source // 2, source // 3 : source // 2] = 255
+    base[:, : source // 8] = 0
+    planes = np.clip(np.stack([base, base.T, base[::-1]]), 0, 255).astype(np.uint8)
+    expected = np.asarray(
+        interpolate(from_numpy(planes[None]), size=(target, target), mode="bicubic").numpy()
+    )[0]
+    actual = resize_uint8_bicubic(planes.transpose(1, 2, 0)[None], (target, target))[0]
+    np.testing.assert_array_equal(actual.transpose(2, 0, 1), expected)
+
+
+@pytest.mark.parametrize("plane", [(218, 182), (164, 100), (82, 82), (669, 551), (512, 400)])
+def test_restored_labels_match_upstream_nearest_resize(plane: tuple[int, int]) -> None:
+    """Labels return to the source grid as upstream's process_output resizes them."""
+    pytest.importorskip("torch")
+    from biomedparse_mlx.ontology import Volume
+    from biomedparse_mlx.volume import restore_labels, volume_geometry
+
+    geometry = volume_geometry(Volume(np.zeros((3, *plane), dtype=np.uint8)))
+    labels = np.random.default_rng(plane[0]).integers(0, 5, (3, 512, 512)).astype(np.uint16)
+    square = geometry.square_size
+    resized = np.asarray(
+        interpolate(
+            from_numpy(labels[None].astype(np.float32)), size=(square, square), mode="nearest"
+        ).numpy()
+    )[0]
+    (top, _), (left, _) = geometry.padding
+    expected = resized[:, top : top + plane[0], left : left + plane[1]]
+    np.testing.assert_array_equal(restore_labels(labels, geometry), expected)
+
+
 def test_strict_loader_rejects_other_formats_and_missing_tensors(
     tiny_config: ModelConfig, tmp_path: Path
 ) -> None:
