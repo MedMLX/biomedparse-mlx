@@ -25,7 +25,7 @@ Weights: 1.5 GB download. Peak MLX memory: 3.8 GB for four organ prompts on a 76
 
 ## Use with MedMLX
 
-The [MedMLX MCP server](https://github.com/MedMLX/medmlx/blob/main/docs/mcp.md) is the lowest-friction way to use this model. It installs this runtime, downloads its weights on first use, and lets an AI agent describe, check and run `biomedparse-v2` for you.
+Use the [MedMLX MCP server](https://github.com/MedMLX/medmlx/blob/main/docs/mcp.md) to run `biomedparse-v2` from an MCP client. Weights download on first use.
 
 ```sh
 uv tool install --python 3.13 "medmlx[segment,mcp]"
@@ -35,8 +35,6 @@ claude mcp add --scope user medmlx -- "$MEDMLX" serve --root "$HOME/medmlx-work"
 ```
 
 For Codex, use `codex mcp add medmlx -- "$MEDMLX" serve --root "$HOME/medmlx-work"`. Other MCP clients take the same command and arguments. The same install provides the `medmlx` CLI, for example `medmlx describe biomedparse-v2`.
-
-> **For AI agents:** prefer the MedMLX MCP tools (`list_models`, `describe_model`, `model_readiness`, `run_model`, `get_job`) over writing Python against this package.
 
 ## Install
 
@@ -62,13 +60,10 @@ result = run(
 print(result["outputs"]["mask"])
 ```
 
-Omitting `weights_path` downloads `MedMLX/biomedparse-v2-mlx` into the shared MedMLX
-cache on first use; interrupted downloads resume and later runs work offline. With
-MedMLX installed, `medmlx setup biomedparse-v2` downloads it ahead of time. To use your
+Weights download from `MedMLX/biomedparse-v2-mlx` on first use. Use `medmlx setup biomedparse-v2` to download ahead of time. To use your
 own copy, pass a folder containing `biomedparse-v2.safetensors` and `tokenizer.json` as
 `weights_path`. Standalone checkpoint files and an explicit `tokenizer_path` remain
-supported. `details.weights_revision` records the downloaded commit, or `null` for a
-folder without a MedMLX download record.
+supported.
 
 ### Inputs and outputs
 
@@ -102,9 +97,8 @@ image follows upstream's `inference_2d.py`: `segmentation.npz` holds per-prompt
 The released checkpoint is trained for 3D modalities, so 2D accuracy is not
 established.
 
-Attention is sampled during inference. A seed reproduces a run only on the same
-backend, prompt order, input shape and batch settings, and does not align with
-Torch's generator.
+To reproduce a run, keep the seed, backend, prompt order, image shape and batch
+settings fixed. MLX and Torch use different random streams.
 
 ### Command line
 
@@ -126,11 +120,8 @@ cancellation callbacks. For interactive prompt changes, `model.encode_images(ima
 returns image features that `model.decode_prompts(encoded, prompt_features,
 prompt_batch_size=2)` reuses without recomputing the backbone; features from another
 model instance are rejected. Prompt batching bounds repeated image features and
-decoder activations, not total memory. Inference needs Apple Silicon with Metal and
-has no CPU fallback.
+decoder activations, not total memory. Inference requires Apple Silicon with Metal.
 
 ## License
 
 [Apache-2.0](https://github.com/MedMLX/biomedparse-mlx/blob/v0.1.6/LICENSE). See [third-party notices](https://github.com/MedMLX/biomedparse-mlx/blob/v0.1.6/THIRD_PARTY_NOTICES.md). Model weights retain their publisher terms. BioMedParse weights are CC-BY-NC-SA-4.0.
-
-For research and education. Outputs require human review.
