@@ -21,7 +21,9 @@ Segment 3D medical images from text prompts with Microsoft BioMedParse v2 and na
 | :--- | :--- |
 | Medical image + text prompts | Labeled segmentation |
 
-Weights: 1.5 GB download. Peak MLX memory: 3.8 GB for four organ prompts on a 768×768×101 abdominal CT.
+| Model | Weights download | Peak MLX memory | Measured on |
+| :--- | ---: | ---: | :--- |
+| `biomedparse-v2` | 1.5 GB | 3.8 GB | Four organ prompts on a 768×768×101 abdominal CT |
 
 ## Use with MedMLX
 
@@ -62,10 +64,10 @@ result = run(
 print(result["outputs"]["mask"])
 ```
 
-Weights download from `MedMLX/biomedparse-v2-mlx` on first use. Use `medmlx setup biomedparse-v2` to download ahead of time. To use your
-own copy, pass a folder containing `biomedparse-v2.safetensors` and `tokenizer.json` as
-`weights_path`. Standalone checkpoint files and an explicit `tokenizer_path` remain
-supported.
+Weights download from `MedMLX/biomedparse-v2-mlx` on first use; `medmlx setup biomedparse-v2`
+downloads them ahead of time. To use your own copy, pass a folder containing
+`biomedparse-v2.safetensors` and `tokenizer.json` as `weights_path`. Standalone checkpoint
+files and an explicit `tokenizer_path` remain supported.
 
 ### Inputs and outputs
 
@@ -82,25 +84,25 @@ supported.
 | `instance_segmentation` | Also split touching same-class structures into instances (volumes only) |
 | `overwrite` | `False` by default; existing outputs are never replaced |
 
-`.npy` and `.npz` volumes must already hold upstream's modality-specific
-preprocessing in the 0–255 range. Raw NIfTI volumes and DICOM slices are windowed per
-slice with upstream's formulas: six fixed CT Hounsfield windows by site, or a
-0.5–99.5 percentile window for other modalities. The slicing axis follows upstream's
-fixed shape heuristic.
+| Input | Preprocessing |
+| :--- | :--- |
+| `.npy`, `.npz` | Must already hold upstream's modality-specific preprocessing in the 0–255 range |
+| Raw NIfTI, DICOM | Windowed per slice with upstream's formulas: six fixed CT Hounsfield windows by site, or a 0.5–99.5 percentile window for other modalities |
 
-A volume writes `segmentation.npz` (`segs`: uint16 labels on the input grid;
-`existence`: prompt-by-slice probabilities) and `run.json` with the source revision,
-prompts and settings; NIfTI input also gets `segmentation.nii.gz` on the source affine.
-Several prompts are merged with per-slice mask NMS and an argmax against a 0.5
-background. `instance_segmentation=True` adds an `instances` array (and
-`instances.nii.gz`), using upstream's edge-refined connected-component split. A 2D
-image follows upstream's `inference_2d.py`: `segmentation.npz` holds per-prompt
-`masks`, `probabilities` and `existence`, and masks of different prompts can overlap.
-The released checkpoint is trained for 3D modalities, so 2D accuracy is not
-established.
+The slicing axis follows upstream's fixed shape heuristic.
 
-To reproduce a run, keep the seed, backend, prompt order, image shape and batch
-settings fixed. MLX and Torch use different random streams.
+| Input | Outputs |
+| :--- | :--- |
+| Volume | `segmentation.npz` (`segs`: uint16 labels on the input grid; `existence`: prompt-by-slice probabilities) and `run.json` with the source revision, prompts and settings. NIfTI input also gets `segmentation.nii.gz` on the source affine. `instance_segmentation=True` adds an `instances` array (and `instances.nii.gz`) |
+| 2D image | `segmentation.npz` with per-prompt `masks`, `probabilities` and `existence`, following upstream's `inference_2d.py` |
+
+- **Several prompts** on a volume are merged with per-slice mask NMS and an argmax
+  against a 0.5 background. On a 2D image, masks of different prompts can overlap.
+- **Instances** use upstream's edge-refined connected-component split.
+- **2D images:** the released checkpoint is trained for 3D modalities, so 2D accuracy is
+  not established.
+- **Reproducibility:** keep the seed, backend, prompt order, image shape and batch
+  settings fixed. MLX and Torch use different random streams.
 
 ### Command line
 
@@ -116,13 +118,15 @@ structures; the other options mirror the `run` arguments.
 
 ### Python API
 
-`biomedparse_mlx.pipeline.segment_volume` and `biomedparse_mlx.image2d.segment_image`
-run the same pipeline on preprocessed arrays; `segment_volume` also takes progress and
-cancellation callbacks. For interactive prompt changes, `model.encode_images(images)`
-returns image features that `model.decode_prompts(encoded, prompt_features,
-prompt_batch_size=2)` reuses without recomputing the backbone; features from another
-model instance are rejected. Prompt batching bounds repeated image features and
-decoder activations, not total memory. Inference requires Apple Silicon with Metal.
+- `biomedparse_mlx.pipeline.segment_volume` and `biomedparse_mlx.image2d.segment_image`
+  run the same pipeline on preprocessed arrays; `segment_volume` also takes progress and
+  cancellation callbacks.
+- For interactive prompt changes, `model.encode_images(images)` returns image features
+  that `model.decode_prompts(encoded, prompt_features, prompt_batch_size=2)` reuses
+  without recomputing the backbone. Features from another model instance are rejected.
+- Prompt batching bounds repeated image features and decoder activations, not total
+  memory.
+- Inference requires Apple Silicon with Metal.
 
 ## License
 
