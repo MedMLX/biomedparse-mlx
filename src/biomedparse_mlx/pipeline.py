@@ -171,8 +171,8 @@ def segment_volume(
     resize can overshoot 0..255 and the cast does not clip it.
 
     Raises:
-        ValueError: Invalid batch size, threshold, seed or prompts, or instance
-            segmentation without edge queries in the model.
+        ValueError: Invalid batch size, threshold, seed, prompts, or model
+            predictions, or instance segmentation without edge queries.
         InterruptedError: ``cancelled`` returned True.
     """
     if type(slice_batch_size) is not int or slice_batch_size < 1:
@@ -188,7 +188,7 @@ def segment_volume(
     from medmlx_core.runtime import import_mlx
 
     from biomedparse_mlx.mlx_types import evaluate, from_numpy
-    from biomedparse_mlx.model import load_model
+    from biomedparse_mlx.model import load_model, require_finite_prediction
     from biomedparse_mlx.resize import ResizeMode, resize, resize_uint8_bicubic
     from biomedparse_mlx.text import encode_prompts
 
@@ -224,6 +224,7 @@ def segment_volume(
             if prompt_batch_size is None
             else model(images, features, prompt_batch_size=prompt_batch_size)
         )
+        require_finite_prediction(prediction)
         count = len(prompts)
         batch = stop - start
         logits = _resize_prompt_logits(prediction.mask_logits, batch, count, config.image_size)

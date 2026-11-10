@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -167,3 +168,82 @@ def test_prompt_groups_keep_outputs_and_random_stream(tiny_config: ModelConfig) 
         # Group sizes change FP32 matrix-product shapes, not the sampled positions.
         for actual, expected in zip(grouped[:-1], full[:-1], strict=True):
             np.testing.assert_allclose(actual, expected, atol=1e-5, rtol=1e-5)
+
+
+@pytest.mark.parametrize(
+    ("path", "field"),
+    [
+        ("image", "mask_logits"),
+        ("image", "existence_logits"),
+        ("volume", "mask_logits"),
+        ("volume", "existence_logits"),
+        ("volume", "edge_logits"),
+    ],
+)
+def test_inference_rejects_nonfinite_model_outputs(
+    monkeypatch: pytest.MonkeyPatch, path: str, field: str
+) -> None:
+    """Invalid logits must not become background labels or false masks."""
+    import mlx.core as mx
+
+    from biomedparse_mlx.image2d import segment_image
+    from biomedparse_mlx.ontology import (
+        Prompt,
+        PromptFeatures,
+        SlicePrediction,
+        Volume,
+        model_config,
+    )
+    from biomedparse_mlx.pipeline import segment_volume
+
+    prediction = SlicePrediction(
+        mx.zeros((1, 2, 2)), mx.zeros((1,)), mx.zeros((1, 2, 2))
+    )
+    shape = (1,) if field == "existence_logits" else (1, 2, 2)
+    prediction = replace(prediction, **{field: mx.full(shape, mx.nan)})
+
+    class FakePredictor:
+        language_encoder: object = object()
+
+    class FakeHead:
+        predictor = FakePredictor()
+
+    class FakeModel:
+        sem_seg_head = FakeHead()
+
+        def __call__(
+            self,
+            _images: mx.array,
+            _prompts: PromptFeatures,
+            *,
+            prompt_batch_size: int | None = None,
+        ) -> SlicePrediction:
+            return prediction
+
+    def load_model(_weights: Path, _config: ModelConfig) -> FakeModel:
+        return FakeModel()
+
+    def encode_prompts(
+        _encoder: object,
+        prompts: tuple[Prompt, ...],
+        _tokenizer: Path,
+        config: ModelConfig,
+    ) -> PromptFeatures:
+        return PromptFeatures(prompts, mx.zeros((len(prompts), 1, config.hidden_dim)))
+
+    monkeypatch.setattr("biomedparse_mlx.model.load_model", load_model)
+    monkeypatch.setattr("biomedparse_mlx.text.encode_prompts", encode_prompts)
+    prompts = (Prompt(1, "liver"),)
+    config = replace(model_config(), image_size=8)
+
+    with pytest.raises(ValueError, match="non-finite"):
+        if path == "image":
+            segment_image(
+                np.zeros((4, 4), dtype=np.uint8), prompts, Path("unused"), Path("unused"),
+                config=config,
+            )
+        else:
+            segment_volume(
+                Volume(np.zeros((4, 4, 4), dtype=np.uint8)), prompts,
+                Path("unused"), Path("unused"), config=config, slice_batch_size=1,
+            )
