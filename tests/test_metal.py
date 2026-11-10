@@ -129,3 +129,41 @@ def test_large_depthwise_conv_matches_mlx_bits(shape: tuple[int, int, int, int])
     np.testing.assert_array_equal(
         np.array(actual).view(np.uint32), np.array(expected).view(np.uint32)
     )
+
+
+def test_prompt_groups_keep_outputs_and_random_stream(tiny_config: ModelConfig) -> None:
+    """Grouped decoding reads the ungrouped run's uniforms and leaves the same RNG state."""
+    import mlx.core as mx
+
+    from biomedparse_mlx.mlx_types import evaluate
+    from biomedparse_mlx.mlx_types import from_numpy as to_mlx
+    from biomedparse_mlx.model import build_model
+    from biomedparse_mlx.ontology import AttentionReplay, Prompt, PromptFeatures
+
+    model = build_model(tiny_config)
+    rng = np.random.default_rng(5)
+    images = to_mlx(rng.uniform(0, 255, (2, 32, 32, 3)).astype(np.float32))
+    tokens = to_mlx(rng.normal(size=(5, 3, tiny_config.hidden_dim)).astype(np.float32))
+    prompts = PromptFeatures(tuple(Prompt(i + 1, f"p{i}") for i in range(5)), tokens)
+    encoded = model.encode_images(images)
+
+    def decode(size: int | None, sampling: AttentionReplay | None = None) -> list[np.ndarray]:
+        mx.random.seed(3)
+        out = model.decode_prompts(encoded, prompts, sampling=sampling, prompt_batch_size=size)
+        after = mx.random.uniform(shape=(4,))
+        evaluate(out.mask_logits, out.existence_logits, out.edge_logits, after)
+        fields = (out.mask_logits, out.existence_logits, out.edge_logits, after)
+        return [np.array(value) for value in fields]
+
+    blocked = tuple(
+        to_mlx(rng.random((10, 4, 8, encoded.scales[i % 3].shape[1] ** 2)) < 0.8)
+        for i in range(tiny_config.decoder_layers + 1)
+    )
+    for sampling in (None, AttentionReplay(blocked)):
+        full = decode(None, sampling)
+        # Two prompts per group leaves a partial last group.
+        grouped = decode(2, sampling)
+        np.testing.assert_array_equal(grouped[-1], full[-1])
+        # Group sizes change FP32 matrix-product shapes, not the sampled positions.
+        for actual, expected in zip(grouped[:-1], full[:-1], strict=True):
+            np.testing.assert_allclose(actual, expected, atol=1e-5, rtol=1e-5)

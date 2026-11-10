@@ -107,8 +107,8 @@ structures; the other options mirror the `run` arguments.
 - For interactive prompt changes, `model.encode_images(images)` returns image features
   that `model.decode_prompts(encoded, prompt_features, prompt_batch_size=2)` reuses
   without recomputing the backbone. Features from another model instance are rejected.
-- Prompt batching bounds repeated image features and decoder activations, not total
-  memory.
+- Prompt batching bounds prompt-specific decoder activations and random-sampling
+  fields, not total memory. Image features are shared by all prompts.
 - Inference requires Apple Silicon with Metal.
 
 ## Use with MedMLX

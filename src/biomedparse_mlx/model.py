@@ -86,9 +86,9 @@ class BioMedParse(nn.Module):
             prompts: Projected language tokens for ``P`` prompts.
             sampling: Upstream's sampled attention masks to replay, for numerical
                 comparison; None draws new samples from MLX's global generator.
-            prompt_batch_size: Maximum prompts repeated through the decoder per
-                group; None retains the full batch. Sampling fields and returned
-                logits still cover all prompts (see ``decode_prompts``).
+            prompt_batch_size: Maximum prompts decoded together per group; None
+                decodes all prompts at once. Returned logits still cover all
+                prompts (see ``decode_prompts``).
 
         Returns:
             A ``SlicePrediction`` with leading axis ``B * P``, image-major and
@@ -127,63 +127,100 @@ class BioMedParse(nn.Module):
         sampling: AttentionReplay | None = None,
         prompt_batch_size: int | None = None,
     ) -> SlicePrediction:
-        """Decode bounded prompt groups, retaining image-major output and RNG draws.
+        """Decode bounded prompt groups layer by layer, retaining output order and RNG draws.
 
-        Prompt batching bounds repeated image features and decoder activations.
-        To preserve the original random sequence, uniform fields for the original
-        full batch are drawn once in layer order and sliced for each group. These
-        fields and returned logits still scale with total prompt count. Replay
-        masks bypass random draws entirely. Global NMS/label merging belongs after
-        this call, once all prompt results have been reunited.
+        Image features stay one row per image: each prompt row reads its image's
+        mask features and cross-attention keys/values, which are projected once
+        per decoder layer and shared by every prompt and group. Query, text and
+        classifier states and attention masks remain per image-prompt pair.
+
+        With ``prompt_batch_size`` smaller than the prompt count, every group
+        advances through one decoder layer before any group starts the next. For
+        each prediction head, the uniform field of the original full batch is
+        drawn once, in head order, and each group reads its rows; only that one
+        field is retained. The final head's field is drawn (so the generator ends
+        in the same state as ungrouped decoding) but never materialized, because
+        that head's attention mask is unused. Returned logits still cover all
+        prompts. Replay masks bypass random draws entirely. Global NMS/label
+        merging belongs after this call, once all prompt results have been
+        reunited.
         """
         if images.owner is not self:
             raise ValueError("Encoded images belong to a different BioMedParse model")
+        config = self._config
         count, batch = len(prompts.prompts), images.masks.shape[0]
-        if prompts.tokens.shape[-1] != self._config.hidden_dim:
+        if prompts.tokens.shape[-1] != config.hidden_dim:
             raise ValueError("Prompt token shape differs from model configuration")
         if prompt_batch_size is not None and (
             type(prompt_batch_size) is not int or prompt_batch_size < 1
         ):
             raise ValueError("prompt_batch_size must be a positive integer or None")
-        if sampling is not None and len(sampling.blocked) != self._config.decoder_layers + 1:
+        if sampling is not None and len(sampling.blocked) != config.decoder_layers + 1:
             raise ValueError("Sampling replay must include every decoder prediction head")
         size = count if prompt_batch_size is None else min(count, prompt_batch_size)
-        if size == count:
-            return self._decode_group(images, prompts, sampling=sampling)
-        uniforms: tuple[mx.array, ...] | None = None
-        if sampling is None:
-            uniforms = tuple(
-                mx.random.uniform(
-                    shape=(
-                        batch * count,
-                        self._config.heads,
-                        self._config.queries,
-                        images.scales[layer % 3].shape[1] * images.scales[layer % 3].shape[2],
-                    )
-                )
-                for layer in range(self._config.decoder_layers + 1)
-            )
-            evaluate(uniforms)
+        groups = [(start, min(start + size, count)) for start in range(0, count, size)]
+        grouped = len(groups) > 1
+        # Rows of the image-major, prompt-minor full batch that belong to each group.
+        selections = [
+            mx.reshape(mx.arange(batch)[:, None] * count + mx.arange(start, stop)[None], (-1,))
+            if grouped
+            else None
+            for start, stop in groups
+        ]
+
+        def select(value: mx.array, rows: mx.array | None) -> mx.array:
+            """Return one group's rows of a full-batch field."""
+            return value if rows is None else value[rows]
+
+        predictor = self.sem_seg_head.predictor
+        memory = predictor.image_memory(images.scales, images.masks)
+        states = [
+            predictor.initial_state(mx.tile(prompts.tokens[start:stop], (batch, 1, 1)))
+            for start, stop in groups
+        ]
+        if grouped:
+            evaluate(*(state.queries for state in states), *(state.text for state in states))
         parts: list[SlicePrediction] = []
-        for start in range(0, count, size):
-            stop = min(start + size, count)
-            indices = mx.reshape(
-                mx.arange(batch)[:, None] * count + mx.arange(start, stop)[None], (-1,)
-            )
-            replay = (
-                AttentionReplay(tuple(value[indices] for value in sampling.blocked))
-                if sampling is not None
+        cutoff = config.queries - config.edge_queries
+        for layer in range(config.decoder_layers + 1):
+            final = layer == config.decoder_layers
+            field = (
+                mx.random.uniform(shape=predictor.attention_shape(batch * count, memory, layer))
+                if sampling is None
                 else None
             )
-            selected = PromptFeatures(prompts.prompts[start:stop], prompts.tokens[start:stop])
-            part = self._decode_group(
-                images,
-                selected,
-                sampling=replay,
-                uniforms=None if uniforms is None else tuple(value[indices] for value in uniforms),
-            )
-            evaluate(part.mask_logits, part.existence_logits, part.edge_logits)
-            parts.append(part)
+            keys_values = None if final else predictor.layer_memory(layer, memory)
+            for index, ((start, stop), rows) in enumerate(zip(groups, selections, strict=True)):
+                state = states[index]
+                masks, mask = predictor.prediction_heads(
+                    state.queries,
+                    images.masks,
+                    memory.sizes[layer % 3],
+                    layer - 1,
+                    None if sampling is None else select(sampling.blocked[layer], rows),
+                    None if field is None else select(field, rows),
+                    prompts=stop - start,
+                )
+                if keys_values is not None:
+                    state = predictor.decoder_layer(
+                        state, layer, keys_values, mask, prompts=stop - start
+                    )
+                    states[index] = state
+                    if grouped:
+                        evaluate(state.queries, state.text, state.cls)
+                    continue
+                existence = predictor.classifier(state.cls[:, 0])
+                edges = (
+                    masks[:, cutoff:].mean(axis=1)
+                    if config.edge_queries
+                    else mx.zeros_like(masks[:, 0])
+                )
+                part = SlicePrediction(masks[:, :cutoff].mean(axis=1), existence[:, 0], edges)
+                if grouped:
+                    evaluate(part.mask_logits, part.existence_logits, part.edge_logits)
+                parts.append(part)
+        if not grouped:
+            return parts[0]
 
         def join(values: list[mx.array]) -> mx.array:
             """Concatenate a group of prediction arrays along the pair axis."""
@@ -200,30 +237,6 @@ class BioMedParse(nn.Module):
             join([part.existence_logits for part in parts]),
             join([part.edge_logits for part in parts]),
         )
-
-    def _decode_group(
-        self,
-        images: EncodedImages,
-        prompts: PromptFeatures,
-        *,
-        sampling: AttentionReplay | None = None,
-        uniforms: tuple[mx.array, ...] | None = None,
-    ) -> SlicePrediction:
-        """Decode one prompt group and average segmentation and edge query logits."""
-        config = self._config
-        count = len(prompts.prompts)
-        masks, scales = images.masks, images.scales
-        masks = mx.repeat(masks, count, axis=0)
-        scales = tuple(mx.repeat(x, count, axis=0) for x in scales)
-        text = mx.tile(prompts.tokens, (images.masks.shape[0], 1, 1))
-        logits, existence = self.sem_seg_head.predictor(
-            scales, masks, text, sampling=sampling, uniforms=uniforms
-        )
-        cutoff = config.queries - config.edge_queries
-        edges = (
-            logits[:, cutoff:].mean(axis=1) if config.edge_queries else mx.zeros_like(logits[:, 0])
-        )
-        return SlicePrediction(logits[:, :cutoff].mean(axis=1), existence[:, 0], edges)
 
 
 def build_model(config: ModelConfig) -> BioMedParse:

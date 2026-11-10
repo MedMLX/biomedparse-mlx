@@ -37,25 +37,64 @@ class Attention(nn.Module):
         mask: mx.array | str | None = None,
     ) -> mx.array:
         """Apply scaled multi-head attention; true mask entries block positions."""
-        width = query.shape[-1]
-        projected = [
-            x @ self.in_proj_weight[i * width : (i + 1) * width].T
-            + self.in_proj_bias[i * width : (i + 1) * width]
-            for i, x in enumerate((query, key, value))
-        ]
-        q, k, v = [
-            mx.transpose(
-                mx.reshape(x, (x.shape[0], x.shape[1], self._heads, width // self._heads)),
-                (0, 2, 1, 3),
-            )
-            for x in projected
-        ]
+        keys, values = self.project_memory(key, value)
+        return self.attend(query, keys, values, mask)
+
+    def _project(self, values: mx.array, index: int) -> mx.array:
+        """Apply the query (0), key (1) or value (2) slice of the packed projection."""
+        width = values.shape[-1]
+        return (
+            values @ self.in_proj_weight[index * width : (index + 1) * width].T
+            + self.in_proj_bias[index * width : (index + 1) * width]
+        )
+
+    def _split_heads(self, values: mx.array) -> mx.array:
+        """Split ``(batch, length, width)`` into ``(batch, heads, length, width / heads)``."""
+        batch, length, width = values.shape
+        return mx.transpose(
+            mx.reshape(values, (batch, length, self._heads, width // self._heads)), (0, 2, 1, 3)
+        )
+
+    def project_memory(self, key: mx.array, value: mx.array) -> tuple[mx.array, mx.array]:
+        """Project keys and values once into head layout ``(batch, heads, length, dim)``."""
+        return self._split_heads(self._project(key, 1)), self._split_heads(self._project(value, 2))
+
+    def attend(
+        self,
+        query: mx.array,
+        keys: mx.array,
+        values: mx.array,
+        mask: mx.array | str | None = None,
+        *,
+        prompts: int = 1,
+    ) -> mx.array:
+        """Attend ``query`` rows to projected keys/values shared by ``prompts`` rows each.
+
+        ``query`` has ``B * prompts`` rows, image-major, while ``keys`` and
+        ``values`` have ``B``. The prompt rows of one image are folded into that
+        image's query axis, so each image's keys and values are projected and
+        read once. Every query row still attends independently; an array mask has
+        the query's ``(B * prompts, heads, length, keys)`` layout and is folded the
+        same way. With ``prompts=1`` this is ordinary multi-head attention.
+        """
+        rows, length, width = query.shape
+        batch = rows // prompts
+        q = self._split_heads(mx.reshape(self._project(query, 0), (batch, prompts * length, width)))
         if isinstance(mask, mx.array):
+            if prompts != 1:
+                heads, positions = mask.shape[1], mask.shape[-1]
+                mask = mx.reshape(
+                    mx.transpose(
+                        mx.reshape(mask, (batch, prompts, heads, length, positions)),
+                        (0, 2, 1, 3, 4),
+                    ),
+                    (batch, heads, prompts * length, positions),
+                )
             mask = mx.where(mask, -float("inf"), 0.0)
         out = mx.fast.scaled_dot_product_attention(
             q,
-            k,
-            v,
+            keys,
+            values,
             scale=(width // self._heads) ** -0.5,
             mask=mask,
         )
@@ -99,8 +138,27 @@ class CrossAttention(nn.Module):
         mask: mx.array | None = None,
     ) -> mx.array:
         """Attend queries to positioned memory keys and normalize the residual."""
+        return self.attend(values, self.project_memory(memory, position), query_position, mask)
+
+    def project_memory(self, memory: mx.array, position: mx.array) -> tuple[mx.array, mx.array]:
+        """Project positioned keys and unpositioned values of ``memory`` once."""
+        return self.multihead_attn.project_memory(memory + position, memory)
+
+    def attend(
+        self,
+        values: mx.array,
+        memory: tuple[mx.array, mx.array],
+        query_position: mx.array | None = None,
+        mask: mx.array | None = None,
+        *,
+        prompts: int = 1,
+    ) -> mx.array:
+        """Attend to keys/values from ``project_memory``; see ``Attention.attend``."""
         query = values if query_position is None else values + query_position
-        return self.norm(values + self.multihead_attn(query, memory + position, memory, mask))
+        keys, projected = memory
+        return self.norm(
+            values + self.multihead_attn.attend(query, keys, projected, mask, prompts=prompts)
+        )
 
 
 class FFN(nn.Module):

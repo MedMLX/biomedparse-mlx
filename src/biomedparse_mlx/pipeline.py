@@ -143,8 +143,9 @@ def segment_volume(
         tokenizer_path: Local CLIP ``tokenizer.json``.
         slice_batch_size: Slices per model call (bounds memory).
         prompt_batch_size: Prompts per decoder group; None decodes all together.
-            Image features are encoded once per slice batch. Sampling fields and
-            output logits still scale with the total prompt count.
+            Image features are encoded once per slice batch and shared by all
+            prompts. Grouping keeps one prediction head's sampling field at a
+            time; output logits still scale with the total prompt count.
         existence_threshold: Cutoff in [0, 1] on a prompt's per-slice existence
             probability.
         seed: Non-negative seed for MLX's global generator, which drives the

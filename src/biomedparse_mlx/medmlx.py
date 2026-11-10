@@ -143,8 +143,10 @@ def run(
             the volume output label array. Defaults to 1, 2, ... in prompt order.
         slice_batch_size: Slices per model call for volumes; ignored for 2D input.
         prompt_batch_size: Maximum prompts per decoder group, a positive integer;
-            None decodes all prompts together. Grouping bounds repeated features and
-            decoder activations, not the full output or random-sampling fields.
+            None decodes all prompts together. Image features are shared by all
+            prompts; grouping bounds prompt-specific decoder activations and keeps
+            one prediction head's random-sampling field at a time, not the full
+            output.
         existence_threshold: Cutoff in [0, 1] on the per-slice (or per-image)
             existence probability of a prompt.
         seed: Non-negative seed for MLX's generator, which drives the attention

@@ -133,7 +133,7 @@ def segment_image(
     ``probabilities > 0.5``, and ``probabilities`` and ``existence_probabilities``
     are float32 with shapes ``(prompts, H, W)`` and ``(prompts,)``.
     ``prompt_batch_size`` is None or a positive maximum number of prompts per
-    decoder group; sampling fields and output arrays still cover all prompts.
+    decoder group; output arrays still cover all prompts.
 
     Raises:
         ValueError: Invalid threshold, seed, prompt batch size, prompts, or image shape.
