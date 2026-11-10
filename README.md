@@ -11,7 +11,7 @@ Segment 3D medical images from text prompts with Microsoft BioMedParse v2 and na
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97_Hugging_Face-weights-yellow)](https://huggingface.co/MedMLX/biomedparse-v2-mlx)
 [![MedMLX](https://img.shields.io/badge/MedMLX-runtime-A51C30)](https://github.com/MedMLX/medmlx)
 
-<img src="https://raw.githubusercontent.com/MedMLX/biomedparse-mlx/v0.1.6/docs/example-abdomen.png" alt="Abdominal CT segmented from four text prompts: liver, spleen and both kidneys" width="100%">
+<img src="https://raw.githubusercontent.com/MedMLX/biomedparse-mlx/main/docs/example-abdomen.png" alt="Abdominal CT segmented from four text prompts: liver, spleen and both kidneys" width="100%">
 
 </div>
 
