@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -78,17 +79,20 @@ def load_nifti_volume(
     units_to_mm = {0: 1.0, 1: 1000.0, 2: 1.0, 3: 0.001}
     if spatial_unit not in units_to_mm:
         raise ValueError("Input NIfTI has invalid spatial units")
-    raw = np.asanyarray(image.dataobj)
-    if np.iscomplexobj(raw):
+    # NiBabel applies scl_slope/scl_inter here; unscaled data keeps its stored
+    # dtype (for example int16 CT) instead of a full-volume float64 copy. Each
+    # windowed slice is converted to float64 separately, which gives the same
+    # values as converting the whole volume first.
+    data = np.asanyarray(image.dataobj)
+    if data.dtype.kind not in "biuf":
         raise ValueError("Input NIfTI must contain real intensities")
-    data = np.asarray(raw, dtype=np.float64)
     # Reject empty axes here: axis_from_shape and per-slice windowing run before
     # Volume's own nonempty check.
     if data.ndim != 3 or min(data.shape) < 1:
         raise ValueError(
             f"Input NIfTI must be a single nonempty 3D volume; got shape {data.shape}"
         )
-    if not np.isfinite(data).all():
+    if not _finite_as_float64(data):
         raise ValueError("Input NIfTI contains non-finite voxels")
     affine = np.array(image.affine, dtype=np.float64, copy=True)
     if affine.shape != (4, 4) or not np.isfinite(affine).all():
@@ -97,8 +101,24 @@ def load_nifti_volume(
     if not np.isfinite(affine).all() or np.linalg.matrix_rank(affine[:3, :3]) < 3:
         raise ValueError("Input NIfTI affine must define an invertible grid in mm")
     axis = axis_from_shape((data.shape[0], data.shape[1], data.shape[2]))
-    normalized = normalize_volume_slices(data, axis, modality=modality, ct_site=ct_site)
+    # Booleans also convert to float64 0/1 slices, as before.
+    real = cast(NDArray[np.floating | np.integer], data)
+    normalized = normalize_volume_slices(real, axis, modality=modality, ct_site=ct_site)
     return Volume(normalized), affine
+
+
+def _finite_as_float64(data: NDArray[np.generic]) -> bool:
+    """Whether every voxel stays finite after conversion to float64.
+
+    Integers and floats up to 64 bits convert finite values to finite float64, so
+    their own ``isfinite`` decides. Wider floats (``longdouble``) can overflow
+    to infinity in float64, so they are checked one converted slice at a time.
+    """
+    if data.dtype.kind in "biu":
+        return True
+    if data.dtype.itemsize <= 8:
+        return bool(np.isfinite(data).all())
+    return all(np.isfinite(plane.astype(np.float64)).all() for plane in data)
 
 
 def save_nifti_labels(labels: NDArray[np.uint16], affine: NDArray[np.float64], path: Path) -> None:
@@ -170,7 +190,8 @@ def restore_labels(labels: NDArray[np.uint16], geometry: VolumeGeometry) -> NDAr
 
     Nearest-neighbor resize to the padded square side (Torch's legacy ``nearest``,
     as upstream's ``process_output``), remove the padding, and move the slice axis
-    back, returning the original ``geometry.original_shape``.
+    back, returning the original ``geometry.original_shape``. Only the
+    unpadded rows and columns are gathered.
     """
     from biomedparse_mlx.resize import nearest_indices
 
@@ -178,8 +199,10 @@ def restore_labels(labels: NDArray[np.uint16], geometry: VolumeGeometry) -> NDAr
     target = geometry.square_size
     rows = nearest_indices(source_h, target)
     columns = nearest_indices(source_w, target)
-    restored = labels[:, rows[:, None], columns]
     (top, _), (left, _) = geometry.padding
     height, width = geometry.plane_shape
-    restored = restored[:, top : top + height, left : left + width]
+    # Gather only the unpadded window of the nearest-resized square; the values
+    # equal resizing the whole square and cropping it afterwards.
+    rows, columns = rows[top : top + height], columns[left : left + width]
+    restored = labels[:, rows[:, None], columns]
     return np.moveaxis(restored, 0, geometry.axis)

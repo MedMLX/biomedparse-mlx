@@ -100,14 +100,25 @@ def normalize_volume_slices(
 
     Each slice along ``axis`` is windowed independently (see
     :func:`normalize_intensity_slice`), so percentiles and min/max are per slice.
+    Each slice is converted to float64 inside that helper, so ``data`` may keep
+    its stored dtype. Returns float32 with ``data``'s shape.
     """
-    if data.ndim != 3:
-        raise ValueError("normalize_volume_slices requires one 3D volume")
+    if data.ndim != 3 or min(data.shape) < 1:
+        raise ValueError("normalize_volume_slices requires one nonempty 3D volume")
     moved = np.moveaxis(data, axis, 0)
-    normalized = np.stack(
-        [
-            normalize_intensity_slice(moved[index], modality=modality, ct_site=ct_site)
-            for index in range(moved.shape[0])
-        ]
-    )
+    # Write each float32 slice into one preallocated slice-major array instead of
+    # keeping a list of slices and stacking them. Like the former ``np.stack``,
+    # each slice keeps the memory order of its normalized result (Fortran order
+    # for a Fortran-ordered NIfTI slice).
+    first = normalize_intensity_slice(moved[0], modality=modality, ct_site=ct_site)
+    depth, (height, width) = moved.shape[0], first.shape
+    if first.flags.f_contiguous and not first.flags.c_contiguous:
+        normalized = np.empty((depth, width, height), dtype=np.float32).transpose(0, 2, 1)
+    else:
+        normalized = np.empty((depth, height, width), dtype=np.float32)
+    normalized[0] = first
+    for index in range(1, depth):
+        normalized[index] = normalize_intensity_slice(
+            moved[index], modality=modality, ct_site=ct_site
+        )
     return np.moveaxis(normalized, 0, axis)
