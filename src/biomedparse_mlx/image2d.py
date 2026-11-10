@@ -136,7 +136,8 @@ def segment_image(
     decoder group; output arrays still cover all prompts.
 
     Raises:
-        ValueError: Invalid threshold, seed, prompt batch size, prompts, or image shape.
+        ValueError: Invalid threshold, seed, prompt batch size, prompts, image
+            shape, or model predictions.
     """
     if not 0 <= existence_threshold <= 1 or type(seed) is not int or seed < 0:
         raise ValueError("Invalid existence threshold or random seed")
@@ -153,7 +154,7 @@ def segment_image(
     from medmlx_core.runtime import import_mlx
 
     from biomedparse_mlx.mlx_types import evaluate, from_numpy
-    from biomedparse_mlx.model import load_model
+    from biomedparse_mlx.model import load_model, require_finite_prediction
     from biomedparse_mlx.resize import ResizeMode, resize
     from biomedparse_mlx.text import encode_prompts
 
@@ -177,6 +178,7 @@ def segment_image(
         if prompt_batch_size is None
         else model(batch, features, prompt_batch_size=prompt_batch_size)
     )
+    require_finite_prediction(prediction)
     logits = resize(
         prediction.mask_logits[..., None],
         (padded_size, padded_size),

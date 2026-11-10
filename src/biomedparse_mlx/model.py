@@ -244,6 +244,18 @@ def build_model(config: ModelConfig) -> BioMedParse:
     return BioMedParse(config)
 
 
+def require_finite_prediction(prediction: SlicePrediction) -> None:
+    """Reject invalid logits before thresholding can turn them into background."""
+    finite = mx.all(mx.stack([
+        mx.all(mx.isfinite(prediction.mask_logits)),
+        mx.all(mx.isfinite(prediction.existence_logits)),
+        mx.all(mx.isfinite(prediction.edge_logits)),
+    ]))
+    evaluate(finite)
+    if not finite.item():
+        raise ValueError("BioMedParse returned non-finite predictions")
+
+
 def load_model(weights_path: Path, config: ModelConfig) -> BioMedParse:
     """Build the model and load native safetensors weights.
 
