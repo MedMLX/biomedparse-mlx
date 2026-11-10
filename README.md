@@ -25,21 +25,6 @@ Segment 3D medical images from text prompts with Microsoft BioMedParse v2 and na
 | :--- | ---: | ---: | :--- |
 | `biomedparse-v2` | 1.5 GB | 3.8 GB | Four organ prompts on a 768×768×101 abdominal CT |
 
-## Use with MedMLX
-
-Use the [MedMLX MCP server](https://github.com/MedMLX/medmlx/blob/main/docs/mcp.md) to run `biomedparse-v2` from an MCP client. Weights download on first use.
-
-```sh
-uv tool install --python 3.13 "medmlx[segment,mcp]"
-MEDMLX="$(uv tool dir --bin --color never)/medmlx"
-mkdir -p "$HOME/medmlx-work"
-claude mcp add --scope user medmlx -- "$MEDMLX" serve --root "$HOME/medmlx-work"
-```
-
-For Codex, use `codex mcp add medmlx -- "$MEDMLX" serve --root "$HOME/medmlx-work"`. Other MCP clients take the same command and arguments. The same install provides the `medmlx` CLI, for example `medmlx describe biomedparse-v2`.
-
-> **For AI agents:** prefer the MedMLX MCP tools (`list_models`, `describe_model`, `model_readiness`, `run_model`, `get_job`) over writing Python against this package.
-
 ## Install
 
 ```bash
@@ -127,6 +112,21 @@ structures; the other options mirror the `run` arguments.
 - Prompt batching bounds repeated image features and decoder activations, not total
   memory.
 - Inference requires Apple Silicon with Metal.
+
+## Use with MedMLX
+
+Use the [MedMLX MCP server](https://github.com/MedMLX/medmlx/blob/main/docs/mcp.md) to run `biomedparse-v2` from an MCP client. Weights download on first use.
+
+```sh
+uv tool install --python 3.13 "medmlx[segment,mcp]"
+MEDMLX="$(uv tool dir --bin --color never)/medmlx"
+mkdir -p "$HOME/medmlx-work"
+claude mcp add --scope user medmlx -- "$MEDMLX" serve --root "$HOME/medmlx-work"
+```
+
+For Codex, use `codex mcp add medmlx -- "$MEDMLX" serve --root "$HOME/medmlx-work"`. Other MCP clients take the same command and arguments. The same install provides the `medmlx` CLI, for example `medmlx describe biomedparse-v2`.
+
+> **For AI agents:** prefer the MedMLX MCP tools (`list_models`, `describe_model`, `model_readiness`, `run_model`, `get_job`) over writing Python against this package.
 
 ## License
 
