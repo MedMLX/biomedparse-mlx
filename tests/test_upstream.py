@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -26,6 +27,7 @@ from biomedparse_mlx.ontology import (
     SlicePrediction,
     model_config,
 )
+from tests.real_images import xray
 from tests.torch_types import (
     ReferenceModel,
     checkpoint_state,
@@ -49,8 +51,9 @@ def reference_model(config: ModelConfig, config_name: str = "biomedparse_3D") ->
     import hydra
     import hydra.utils
 
-    upstream = Path("../upstream/BiomedParse").resolve()
-    if not upstream.is_dir() or not Path("weights/tokenizer/tokenizer.json").is_file():
+    upstream = Path(os.environ.get("BIOMEDPARSE_UPSTREAM", "../upstream/BiomedParse")).resolve()
+    tokenizer = Path(os.environ.get("BIOMEDPARSE_TOKENIZER", "weights/tokenizer")).resolve()
+    if not upstream.is_dir() or not (tokenizer / "tokenizer.json").is_file():
         pytest.skip("Pinned upstream checkout and local tokenizer assets are required")
     revision = subprocess.check_output(["git", "-C", str(upstream), "rev-parse", "HEAD"], text=True)
     assert revision.strip() == config.source_revision
@@ -72,7 +75,7 @@ def reference_model(config: ModelConfig, config_name: str = "biomedparse_3D") ->
         f"sem_seg_head.predictor.dim_feedforward={config.ffn_dim}",
         f"sem_seg_head.predictor.dec_layers={config.decoder_layers}",
         f"sem_seg_head.predictor.num_queries={config.queries}",
-        "sem_seg_head.predictor.language_encoder.tokenizer.pretrained_model_name_or_path=weights/tokenizer",
+        f"sem_seg_head.predictor.language_encoder.tokenizer.pretrained_model_name_or_path={tokenizer}",
         f"sem_seg_head.predictor.language_encoder.encoder_transformer.config_encoder.WIDTH={width}",
         f"sem_seg_head.predictor.language_encoder.encoder_transformer.config_encoder.HEADS={config.heads}",
         f"sem_seg_head.predictor.language_encoder.encoder_transformer.config_encoder.LAYERS={config.text_layers}",
@@ -180,7 +183,8 @@ def test_full_graph_seeded_upstream(tiny_config: ModelConfig) -> None:
         )
     actual = native.sem_seg_head.predictor.language_encoder.encoder_transformer(from_numpy(ids))
     np.testing.assert_allclose(np.array(actual, dtype=np.float32), expected, atol=2e-5, rtol=2e-5)
-    images = rng.uniform(0, 255, (2, 32, 32, 3)).astype(np.float32)
+    frame = np.repeat(xray((32, 32))[..., None], 3, axis=2).astype(np.float32)
+    images = np.stack([frame, frame[::-1]])
     tokens = rng.normal(size=(2, 3, tiny_config.hidden_dim)).astype(np.float32)
     output, expected_outputs = paired_prediction(
         reference, native, images, tokens, (Prompt(1, "liver"), Prompt(7, "spleen")), tiny_config

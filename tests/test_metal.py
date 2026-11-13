@@ -11,6 +11,7 @@ import pytest
 
 from biomedparse_mlx.dependency_types import callable_member
 from biomedparse_mlx.ontology import ModelConfig
+from tests.real_images import ct_crop, liver_labels, xray
 from tests.torch_types import from_numpy, interpolate, numpy_float
 
 pytestmark = [pytest.mark.metal, pytest.mark.usefixtures("metal_runtime")]
@@ -31,7 +32,9 @@ def test_resize_matches_torch(
 
     from biomedparse_mlx.resize import ResizeMode, resize
 
-    values = np.random.default_rng(7).normal(size=shape).astype(np.float32)
+    plane = xray((shape[1], shape[2])).astype(np.float32)
+    channels = np.repeat(plane[..., None], shape[3], axis=2)
+    values = np.stack([channels if i % 2 == 0 else channels[::-1] for i in range(shape[0])])
     kwargs = {} if mode == "nearest" else {"align_corners": False, "antialias": aa}
     expected = interpolate(from_numpy(values.transpose(0, 3, 1, 2)), size=size, mode=mode, **kwargs)
     actual = resize(mx.array(values), size, ResizeMode(mode), antialias=aa)
@@ -49,13 +52,8 @@ def test_uint8_bicubic_resize_matches_torch_uint8_kernel(source: int, target: in
     pytest.importorskip("torch")
     from biomedparse_mlx.resize import resize_uint8_bicubic
 
-    rng = np.random.default_rng(source)
-    # Smooth anatomy-like background with hard 0/255 edges, where clamping matters.
-    yy, xx = np.mgrid[:source, :source] / source
-    base = 120 + 80 * np.sin(6 * xx) * np.cos(4 * yy) + rng.normal(0, 12, (source, source))
-    base[source // 4 : source // 2, source // 3 : source // 2] = 255
-    base[:, : source // 8] = 0
-    planes = np.clip(np.stack([base, base.T, base[::-1]]), 0, 255).astype(np.uint8)
+    base = xray((source, source))
+    planes = np.stack([base, base.T, base[::-1]])
     expected = np.asarray(
         interpolate(from_numpy(planes[None]), size=(target, target), mode="bicubic").numpy()
     )[0]
@@ -70,8 +68,8 @@ def test_restored_labels_match_upstream_nearest_resize(plane: tuple[int, int]) -
     from biomedparse_mlx.ontology import Volume
     from biomedparse_mlx.volume import restore_labels, volume_geometry
 
-    geometry = volume_geometry(Volume(np.zeros((3, *plane), dtype=np.uint8)))
-    labels = np.random.default_rng(plane[0]).integers(0, 5, (3, 512, 512)).astype(np.uint16)
+    geometry = volume_geometry(Volume(np.broadcast_to(xray(plane), (3, *plane))))
+    labels = liver_labels()
     square = geometry.square_size
     resized = np.asarray(
         interpolate(
@@ -143,7 +141,8 @@ def test_prompt_groups_keep_outputs_and_random_stream(tiny_config: ModelConfig) 
 
     model = build_model(tiny_config)
     rng = np.random.default_rng(5)
-    images = to_mlx(rng.uniform(0, 255, (2, 32, 32, 3)).astype(np.float32))
+    frame = np.repeat(xray((32, 32))[..., None], 3, axis=2).astype(np.float32)
+    images = to_mlx(np.stack([frame, frame[::-1]]))
     tokens = to_mlx(rng.normal(size=(5, 3, tiny_config.hidden_dim)).astype(np.float32))
     prompts = PromptFeatures(tuple(Prompt(i + 1, f"p{i}") for i in range(5)), tokens)
     encoded = model.encode_images(images)
@@ -239,11 +238,11 @@ def test_inference_rejects_nonfinite_model_outputs(
     with pytest.raises(ValueError, match="non-finite"):
         if path == "image":
             segment_image(
-                np.zeros((4, 4), dtype=np.uint8), prompts, Path("unused"), Path("unused"),
+                xray((4, 4)), prompts, Path("unused"), Path("unused"),
                 config=config,
             )
         else:
             segment_volume(
-                Volume(np.zeros((4, 4, 4), dtype=np.uint8)), prompts,
+                Volume(ct_crop()), prompts,
                 Path("unused"), Path("unused"), config=config, slice_batch_size=1,
             )

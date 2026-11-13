@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Protocol, cast
@@ -9,7 +10,9 @@ from typing import Protocol, cast
 import numpy as np
 import pytest
 from numpy.typing import NDArray
+from PIL import Image
 
+from biomedparse_mlx._nifti import nib
 from biomedparse_mlx.preprocessing import CT_WINDOWS, Modality, normalize_intensity_slice
 
 
@@ -45,7 +48,12 @@ def _processing_utils(upstream: Path) -> ProcessingUtils:
     return cast(ProcessingUtils, importlib.import_module("inference_utils.processing_utils"))
 
 
-UPSTREAM = Path(__file__).resolve().parent.parent.parent / "upstream" / "BiomedParse"
+UPSTREAM = Path(
+    os.environ.get(
+        "BIOMEDPARSE_UPSTREAM",
+        str(Path(__file__).resolve().parent.parent.parent / "upstream" / "BiomedParse"),
+    )
+)
 
 
 @pytest.mark.oracle
@@ -70,17 +78,22 @@ def test_normalize_intensity_slice_matches_upstream_process_intensity_image(
 ) -> None:
     """Upstream's ``process_intensity_image`` pads to square and resizes to 1024
     before stacking channels; this package stops at the windowed 0..255 array and
-    resizes to the v2 model's own 512 elsewhere. Using square synthetic data and
-    applying upstream's own resize to our output isolates the windowing math."""
+    resizes to the v2 model's own 512 elsewhere. A square real-image crop and
+    upstream's own resize isolate the windowing math."""
     if not UPSTREAM.is_dir():
         pytest.skip("Pinned upstream checkout is required")
     skimage = pytest.importorskip("skimage")
     pytest.importorskip("SimpleITK")
     process_intensity_image = _processing_utils(UPSTREAM).process_intensity_image
 
-    rng = np.random.default_rng(23)
-    lower = -1200.0 if modality is Modality.CT else 10.0
-    data = rng.uniform(lower, 3000.0, size=(40, 40))
+    root = Path.home() / ".cache/medmlx/test-data"
+    if modality is Modality.CT:
+        ct = nib.load(root / "hcc_063_ct.nii.gz")
+        data = np.asarray(ct.dataobj, dtype=np.float64)[128:384, 128:384, 64]
+    else:
+        with Image.open(root / "chest_xray.jpg") as image:
+            xray = np.asarray(image.convert("L"), dtype=np.float64)
+        data = xray[:256, :256]
     expected = process_intensity_image(data.copy(), modality is Modality.CT, ct_site)
     native = normalize_intensity_slice(data, modality=modality, ct_site=ct_site)
     # At native resolution (no resize) this package's float32 output already matches
