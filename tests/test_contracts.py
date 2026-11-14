@@ -10,7 +10,7 @@ import pytest
 from medmlx_core.errors import InvalidInputError
 from medmlx_core.outputs import validate_outputs
 
-from biomedparse_mlx.medmlx import output_artifacts, run
+from biomedparse_mlx.medmlx import output_artifacts, segment
 from biomedparse_mlx.ontology import Prompt
 
 
@@ -20,7 +20,7 @@ from biomedparse_mlx.ontology import Prompt
         ("image.txt", 0.5, False, False, InvalidInputError),
         ("image.png", 1.5, False, False, InvalidInputError),
         ("image.png", 0.5, "false", False, InvalidInputError),
-        ("image.png", 0.5, False, True, FileExistsError),
+        ("image.png", 0.5, False, True, InvalidInputError),
     ],
     ids=["suffix", "range", "boolean", "existing output"],
 )
@@ -46,7 +46,7 @@ def test_run_checks_arguments_before_downloading(
         output_dir.mkdir()
         (output_dir / "segmentation.npz").write_bytes(b"intact")
     with pytest.raises(error):
-        run(
+        segment(
             image_path=str(tmp_path / image),
             prompt="liver",
             output_dir=str(output_dir),
@@ -61,7 +61,7 @@ def test_output_artifacts_name_each_written_file() -> None:
     prompts = (Prompt(3, "liver"), Prompt(5, "spleen"))
     outputs = {
         "mask": "segmentation.npz",
-        "receipt": "run.json",
+        "metadata": "run.json",
         "mask_nifti": "segmentation.nii.gz",
         "instances_nifti": "instances.nii.gz",
     }
@@ -74,6 +74,6 @@ def test_output_artifacts_name_each_written_file() -> None:
     assert checked["mask_nifti"]["coordinate_space"] == "image_physical"
     assert checked["mask"].get("grid_of") is None
     assert checked["instances_nifti"].get("labels") == []
-    two_d = output_artifacts({"mask": "m", "receipt": "r"}, prompts, is_nifti=False, is_2d=True)
+    two_d = output_artifacts({"mask": "m", "metadata": "r"}, prompts, is_nifti=False, is_2d=True)
     assert two_d["mask"]["kind"] == "binary_mask"
     assert two_d["mask"].get("grid_of") == "image_path"

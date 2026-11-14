@@ -256,7 +256,7 @@ def require_finite_prediction(prediction: SlicePrediction) -> None:
         raise ValueError("BioMedParse returned non-finite predictions")
 
 
-def load_model(weights_path: Path, config: ModelConfig) -> BioMedParse:
+def load_network(weights_path: Path, config: ModelConfig) -> BioMedParse:
     """Build the model and load native safetensors weights.
 
     Strict shape/key, float32 and finite-value admission: every parameter must be

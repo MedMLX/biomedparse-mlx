@@ -204,7 +204,7 @@ def test_released_checkpoint_example() -> None:
     pytest.importorskip("torch")
     import torch
 
-    from biomedparse_mlx.model import load_model
+    from biomedparse_mlx.model import load_network
     from biomedparse_mlx.resize import ResizeMode, resize
     from biomedparse_mlx.text import encode_prompts, tokenize
 
@@ -217,7 +217,7 @@ def test_released_checkpoint_example() -> None:
     reference = reference_model(config)
     state = checkpoint_state(source)
     reference.load_state_dict(state, strict=True)
-    native = load_model(weights, config)
+    native = load_network(weights, config)
     prompts = (Prompt(6, "Visualization of the liver in abdominal CT imaging"),)
     tokenizer_path = Path("weights/tokenizer.json")
     ids, lengths = tokenize(prompts, tokenizer_path, config)

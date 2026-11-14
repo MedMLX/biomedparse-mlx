@@ -21,8 +21,7 @@ def main() -> None:
         "windowed with --modality/--ct-site",
     )
     infer.add_argument("--image", required=True)
-    infer.add_argument("--weights", required=True, help="Native .safetensors weight file")
-    infer.add_argument("--tokenizer", required=True)
+    infer.add_argument("--weights", help="Model folder; omitted downloads the MedMLX model")
     infer.add_argument("--output-dir", required=True)
     infer.add_argument("--prompt", action="append", required=True)
     infer.add_argument("--label", type=int, action="append")
@@ -40,8 +39,7 @@ def main() -> None:
         "DICOM slice windowed with --modality/--ct-site",
     )
     infer2d.add_argument("--image", required=True)
-    infer2d.add_argument("--weights", required=True, help="Native .safetensors weight file")
-    infer2d.add_argument("--tokenizer", required=True)
+    infer2d.add_argument("--weights", help="Model folder; omitted downloads the MedMLX model")
     infer2d.add_argument("--output-dir", required=True)
     infer2d.add_argument("--prompt", action="append", required=True)
     infer2d.add_argument("--label", type=int, action="append")
@@ -53,12 +51,11 @@ def main() -> None:
     infer2d.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
     try:
-        from biomedparse_mlx.medmlx import run
+        from biomedparse_mlx.medmlx import segment
 
-        result = run(
+        result = segment(
             image_path=args.image,
             weights_path=args.weights,
-            tokenizer_path=args.tokenizer,
             output_dir=args.output_dir,
             prompt=args.prompt,
             labels=args.label,

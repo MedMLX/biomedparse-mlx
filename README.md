@@ -34,9 +34,9 @@ uv pip install "biomedparse-mlx>=0.1.6"
 ## Run
 
 ```python
-from biomedparse_mlx.medmlx import run
+from biomedparse_mlx import segment
 
-result = run(
+result = segment(
     image_path="scan.nii.gz",
     modality="ct",
     ct_site="abdomen",
@@ -49,8 +49,7 @@ print(result["outputs"]["mask"])
 
 Weights download from `MedMLX/biomedparse-v2-mlx` on first use; `medmlx setup biomedparse-v2`
 downloads them ahead of time. To use your own copy, pass a folder containing
-`biomedparse-v2.safetensors` and `tokenizer.json` as `weights_path`. Standalone checkpoint
-files and an explicit `tokenizer_path` remain supported.
+`biomedparse-v2.safetensors` and `tokenizer.json` as `weights_path`.
 
 ### Inputs and outputs
 
@@ -61,11 +60,11 @@ files and an explicit `tokenizer_path` remain supported.
 | `output_dir` | Directory for the outputs; created if missing |
 | `labels` | Distinct label per prompt, 1 to 65535; defaults to 1, 2, … in prompt order |
 | `modality`, `ct_site` | Required for raw NIfTI and DICOM: `"ct"` with a site (abdomen, lung, pelvis, liver, colon or pancreas), or `"other"` |
-| `weights_path`, `tokenizer_path` | Optional model folder or `.safetensors` file, and tokenizer file |
+| `weights_path` | Optional model folder |
 | `slice_batch_size`, `prompt_batch_size` | Slices per model call (default 2) and maximum prompts per decoder group (default all) |
 | `existence_threshold`, `seed` | Existence-probability cutoff (default 0.5) and attention-sampling seed (default 0) |
 | `instance_segmentation` | Also split touching same-class structures into instances (volumes only) |
-| `overwrite` | `False` by default; existing outputs are never replaced |
+| `overwrite` | `False` by default; existing outputs are replaced only when `True` |
 
 | Input | Preprocessing |
 | :--- | :--- |
@@ -76,7 +75,7 @@ The slicing axis follows upstream's fixed shape heuristic.
 
 | Input | Outputs |
 | :--- | :--- |
-| Volume | `segmentation.npz` (`segs`: uint16 labels on the input grid; `existence`: prompt-by-slice probabilities) and `run.json` with the source revision, prompts and settings. NIfTI input also gets `segmentation.nii.gz` on the source affine. `instance_segmentation=True` adds an `instances` array (and `instances.nii.gz`) |
+| Volume | `segmentation.npz` (`segs`: uint16 labels on the input grid; `existence`: prompt-by-slice probabilities) and `run.json` (role `metadata`) with the source revision, prompts and settings. NIfTI input also gets `segmentation.nii.gz` on the source affine. `instance_segmentation=True` adds an `instances` array (and `instances.nii.gz`) |
 | 2D image | `segmentation.npz` with per-prompt `masks`, `probabilities` and `existence`, following upstream's `inference_2d.py` |
 
 - **Several prompts** on a volume are merged with per-slice mask NMS and an argmax
@@ -91,13 +90,13 @@ The slicing axis follows upstream's fixed shape heuristic.
 
 ```bash
 biomedparse-mlx segment \
-  --image scan.npy --weights weights/biomedparse-v2.safetensors --tokenizer weights/tokenizer.json \
+  --image scan.npy --weights weights \
   --prompt 'Visualization of the liver in abdominal CT imaging' --label 6 \
   --output-dir outputs/liver
 ```
 
 `segment-2d` does the same for a 2D image. Repeat `--prompt` and `--label` for several
-structures; the other options mirror the `run` arguments.
+structures; the other options mirror the `segment` arguments.
 
 ### Python API
 

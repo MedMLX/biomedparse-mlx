@@ -188,7 +188,7 @@ def segment_volume(
     from medmlx_core.runtime import import_mlx
 
     from biomedparse_mlx.mlx_types import evaluate, from_numpy
-    from biomedparse_mlx.model import load_model, require_finite_prediction
+    from biomedparse_mlx.model import load_network, require_finite_prediction
     from biomedparse_mlx.resize import ResizeMode, resize, resize_uint8_bicubic
     from biomedparse_mlx.text import encode_prompts
 
@@ -196,7 +196,7 @@ def segment_volume(
     config = model_config() if config is None else config
     if instance_segmentation and config.edge_queries < 1:
         raise ValueError("instance_segmentation requires a model with edge_queries >= 1")
-    model = load_model(weights_path, config)
+    model = load_network(weights_path, config)
     features = encode_prompts(
         model.sem_seg_head.predictor.language_encoder, prompts, tokenizer_path, config
     )

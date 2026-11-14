@@ -88,16 +88,16 @@ def test_strict_loader_rejects_other_formats_and_missing_tensors(
     import mlx.core as mx
 
     from biomedparse_mlx.mlx_types import flatten_parameters
-    from biomedparse_mlx.model import build_model, load_model
+    from biomedparse_mlx.model import build_model, load_network
 
     model = build_model(tiny_config)
     weights = tmp_path / "tiny.safetensors"
     model.save_weights(str(weights))
-    load_model(weights, tiny_config)
+    load_network(weights, tiny_config)
     legacy = tmp_path / "tiny.npz"
     model.save_weights(str(legacy))
     with pytest.raises(RuntimeError):
-        load_model(legacy, tiny_config)
+        load_network(legacy, tiny_config)
     parameters = dict(flatten_parameters(model.parameters()))
     parameters.pop("pixel_mean")
 
@@ -108,7 +108,7 @@ def test_strict_loader_rejects_other_formats_and_missing_tensors(
 
     cast(Writer, callable_member(mx, "save_safetensors"))(str(weights), parameters)
     with pytest.raises(ValueError):
-        load_model(weights, tiny_config)
+        load_network(weights, tiny_config)
 
 
 @pytest.mark.parametrize("shape", [(1, 13, 11, 12), (2, 16, 9, 20)])
@@ -219,7 +219,7 @@ def test_inference_rejects_nonfinite_model_outputs(
         ) -> SlicePrediction:
             return prediction
 
-    def load_model(_weights: Path, _config: ModelConfig) -> FakeModel:
+    def load_network(_weights: Path, _config: ModelConfig) -> FakeModel:
         return FakeModel()
 
     def encode_prompts(
@@ -230,7 +230,7 @@ def test_inference_rejects_nonfinite_model_outputs(
     ) -> PromptFeatures:
         return PromptFeatures(prompts, mx.zeros((len(prompts), 1, config.hidden_dim)))
 
-    monkeypatch.setattr("biomedparse_mlx.model.load_model", load_model)
+    monkeypatch.setattr("biomedparse_mlx.model.load_network", load_network)
     monkeypatch.setattr("biomedparse_mlx.text.encode_prompts", encode_prompts)
     prompts = (Prompt(1, "liver"),)
     config = replace(model_config(), image_size=8)
