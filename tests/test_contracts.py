@@ -8,8 +8,10 @@ from typing import cast
 
 import pytest
 from medmlx_core.errors import InvalidInputError
+from medmlx_core.outputs import validate_outputs
 
-from biomedparse_mlx.medmlx import run
+from biomedparse_mlx.medmlx import output_artifacts, run
+from biomedparse_mlx.ontology import Prompt
 
 
 @pytest.mark.parametrize(
@@ -52,3 +54,26 @@ def test_run_checks_arguments_before_downloading(
             # JSON callers can send a string; the runner must reject it.
             overwrite=cast(bool, overwrite),
         )
+
+
+def test_output_artifacts_name_each_written_file() -> None:
+    """Each output role is described: prompt labels on masks, source grid on NIfTI."""
+    prompts = (Prompt(3, "liver"), Prompt(5, "spleen"))
+    outputs = {
+        "mask": "segmentation.npz",
+        "receipt": "run.json",
+        "mask_nifti": "segmentation.nii.gz",
+        "instances_nifti": "instances.nii.gz",
+    }
+    artifacts = output_artifacts(outputs, prompts, is_nifti=True, is_2d=False)
+    _, checked = validate_outputs({"outputs": outputs, "artifacts": artifacts})
+    labels = [{"value": 3, "name": "liver"}, {"value": 5, "name": "spleen"}]
+    assert checked["mask_nifti"]["kind"] == "label_map"
+    assert checked["mask_nifti"].get("labels") == labels
+    assert checked["mask_nifti"].get("grid_of") == "image_path"
+    assert checked["mask_nifti"]["coordinate_space"] == "image_physical"
+    assert checked["mask"].get("grid_of") is None
+    assert checked["instances_nifti"].get("labels") == []
+    two_d = output_artifacts({"mask": "m", "receipt": "r"}, prompts, is_nifti=False, is_2d=True)
+    assert two_d["mask"]["kind"] == "binary_mask"
+    assert two_d["mask"].get("grid_of") == "image_path"

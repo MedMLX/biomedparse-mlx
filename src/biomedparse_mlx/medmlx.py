@@ -7,7 +7,7 @@ from dataclasses import asdict
 from itertools import combinations
 from pathlib import Path
 from time import perf_counter
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 from uuid import uuid4
 
 from biomedparse_mlx.ontology import (
@@ -20,7 +20,12 @@ from biomedparse_mlx.ontology import (
 )
 
 if TYPE_CHECKING:
+    from medmlx_core.outputs import Artifact, OutputLabel
+
     from biomedparse_mlx.preprocessing import Modality
+
+type ModalityName = Literal["ct", "other"]
+type CtSite = Literal["abdomen", "lung", "pelvis", "liver", "colon", "pancreas"]
 
 
 MODEL = {
@@ -48,7 +53,9 @@ def _prompt_texts(value: object) -> list[str]:
     return cast(list[str], value)
 
 
-def _parse_modality(modality: str | None, ct_site: str | None) -> tuple[Modality, str | None]:
+def _parse_modality(
+    modality: ModalityName | None, ct_site: CtSite | None
+) -> tuple[Modality, str | None]:
     """Validate the raw-input windowing options; ``modality`` is required here."""
     from medmlx_core.errors import InvalidInputError
 
@@ -69,7 +76,7 @@ def _parse_modality(modality: str | None, ct_site: str | None) -> tuple[Modality
     return parsed, ct_site
 
 
-def _assets(bundle_dir: Path, tokenizer_path: str | None) -> tuple[Path, Path]:
+def _assets(bundle_dir: Path, tokenizer_path: str | Path | None) -> tuple[Path, Path]:
     """Return the weights and tokenizer files for a model folder or weights file."""
     # Keep the named snapshot link; MLX loads safetensors explicitly.
     weights = (
@@ -102,20 +109,61 @@ def _refuse_aliases(outputs: set[Path], assets: list[Path]) -> None:
         raise InvalidInputError("Inference outputs would refer to the same file")
 
 
+def output_artifacts(
+    outputs: dict[str, str], prompts: tuple[Prompt, ...], *, is_nifti: bool, is_2d: bool
+) -> dict[str, Artifact]:
+    """Describe each written file; ``outputs`` holds the roles that were written.
+
+    ``segmentation.npz`` is an array archive without an affine, so it is in
+    ``pixel`` space and shares ``image_path``'s grid only when that input is not a
+    NIfTI volume. The NIfTI files carry the source affine in mm. Mask labels are the
+    run's prompt labels named by their prompt text; the 2D archive stores one
+    boolean mask per prompt, in prompt order, rather than label values. Instance
+    IDs are unnamed.
+    """
+    from medmlx_core.outputs import artifact
+
+    named: list[OutputLabel] = [{"value": item.label, "name": item.text} for item in prompts]
+    result: dict[str, Artifact] = {
+        "mask": artifact(
+            kind="binary_mask" if is_2d else "label_map",
+            coordinate_space="pixel",
+            grid_of=None if is_nifti else "image_path",
+            labels=named,
+        ),
+        "receipt": artifact(kind="report", coordinate_space="not_applicable"),
+    }
+    if "mask_nifti" in outputs:
+        result["mask_nifti"] = artifact(
+            kind="label_map",
+            coordinate_space="image_physical",
+            grid_of="image_path",
+            labels=named,
+        )
+    if "instances_nifti" in outputs:
+        result["instances_nifti"] = artifact(
+            kind="label_map",
+            coordinate_space="image_physical",
+            grid_of="image_path",
+            labels=[],
+        )
+    return result
+
+
 def run(
     *,
-    image_path: str,
+    image_path: str | Path,
     prompt: str | list[str],
-    weights_path: str | None = None,
-    tokenizer_path: str | None = None,
-    output_dir: str,
+    weights_path: str | Path | None = None,
+    tokenizer_path: str | Path | None = None,
+    output_dir: str | Path,
     labels: list[int] | None = None,
     slice_batch_size: int = 2,
     prompt_batch_size: int | None = None,
     existence_threshold: float = 0.5,
     seed: int = 0,
-    modality: str | None = None,
-    ct_site: str | None = None,
+    modality: ModalityName | None = None,
+    ct_site: CtSite | None = None,
     overwrite: bool = False,
     instance_segmentation: bool = False,
 ) -> dict[str, object]:
@@ -162,9 +210,14 @@ def run(
             ``instances.nii.gz``).
 
     Returns:
-        ``{"outputs": ..., "details": ...}``. ``outputs`` maps ``mask`` to
-        ``segmentation.npz`` and ``receipt`` to ``run.json``, plus ``mask_nifti``
-        (``segmentation.nii.gz``) and ``instances_nifti`` when written. The volume
+        ``{"outputs": ..., "artifacts": ..., "details": ...}``. ``outputs`` maps
+        ``mask`` to ``segmentation.npz`` and ``receipt`` to ``run.json``, plus
+        ``mask_nifti`` (``segmentation.nii.gz``) and ``instances_nifti`` when
+        written. ``artifacts`` has one entry per output: ``mask`` is a ``label_map``
+        (a ``binary_mask`` for 2D input) in ``pixel`` space, ``mask_nifti`` and
+        ``instances_nifti`` are label maps in ``image_physical`` space on the
+        ``image_path`` grid, and ``receipt`` is a report. Mask labels are the
+        prompt labels named by prompt text. The volume
         ``segmentation.npz`` holds ``segs`` (uint16 labels on the input grid, 0
         for background), ``existence`` (prompts by slices) and optionally
         ``instances``; the 2D one holds ``masks``, ``probabilities`` and
@@ -364,4 +417,5 @@ def run(
         outputs["instances_nifti"] = str(instances_output)
     details = asdict(receipt)
     details["weights_revision"] = weights_revision(weights.parent)
-    return {"outputs": outputs, "details": details}
+    artifacts = output_artifacts(outputs, prompts, is_nifti=is_nifti, is_2d=is_2d)
+    return {"outputs": outputs, "artifacts": artifacts, "details": details}
