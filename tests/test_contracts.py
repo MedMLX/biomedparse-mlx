@@ -10,7 +10,7 @@ import pytest
 from medmlx_core.errors import InvalidInputError
 from medmlx_core.outputs import validate_outputs
 
-from biomedparse_mlx.medmlx import output_artifacts, segment
+from biomedparse_mlx.medmlx import output_artifacts, run
 from biomedparse_mlx.ontology import Prompt
 
 
@@ -46,7 +46,7 @@ def test_run_checks_arguments_before_downloading(
         output_dir.mkdir()
         (output_dir / "segmentation.npz").write_bytes(b"intact")
     with pytest.raises(error):
-        segment(
+        run(
             image_path=str(tmp_path / image),
             prompt="liver",
             output_dir=str(output_dir),

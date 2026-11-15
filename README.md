@@ -34,9 +34,9 @@ uv pip install "biomedparse-mlx>=0.1.6"
 ## Run
 
 ```python
-from biomedparse_mlx import segment
+from biomedparse_mlx import run
 
-result = segment(
+result = run(
     image_path="scan.nii.gz",
     modality="ct",
     ct_site="abdomen",
@@ -96,7 +96,7 @@ biomedparse-mlx segment \
 ```
 
 `segment-2d` does the same for a 2D image. Repeat `--prompt` and `--label` for several
-structures; the other options mirror the `segment` arguments.
+structures; the other options mirror the `run` arguments.
 
 ### Python API
 

@@ -51,9 +51,9 @@ def main() -> None:
     infer2d.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
     try:
-        from biomedparse_mlx.medmlx import segment
+        from biomedparse_mlx.medmlx import run
 
-        result = segment(
+        result = run(
             image_path=args.image,
             weights_path=args.weights,
             output_dir=args.output_dir,

@@ -33,7 +33,7 @@ MODEL = {
     "id": model_config().id,
     "label": "BioMedParse v2",
     "task": "segmentation",
-    "run": "biomedparse_mlx.medmlx:segment",
+    "run": "biomedparse_mlx.medmlx:run",
     # Measured MLX peak for four prompts on a 768x768x101 abdominal CT; larger inputs need more.
     "peak_memory_gb": 3.9,
     "summary": "Text-guided 3D segmentation with native MLX and slice existence classification.",
@@ -137,7 +137,7 @@ def output_artifacts(
     return result
 
 
-def segment(
+def run(
     *,
     image_path: PathLike,
     prompt: str | list[str],
