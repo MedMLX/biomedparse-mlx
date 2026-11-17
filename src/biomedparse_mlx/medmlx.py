@@ -8,6 +8,9 @@ from pathlib import Path
 from time import perf_counter
 from typing import TYPE_CHECKING, Literal, cast
 
+# MedMLX resolves path annotations at runtime when parsing CLI arguments.
+from medmlx_core.files import PathLike
+
 from biomedparse_mlx.ontology import (
     DICOM_SUFFIXES,
     IMAGE_SUFFIXES,
@@ -20,7 +23,6 @@ from biomedparse_mlx.ontology import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from medmlx_core.files import PathLike
     from medmlx_core.outputs import Artifact, OutputLabel
 
     from biomedparse_mlx.preprocessing import Modality
