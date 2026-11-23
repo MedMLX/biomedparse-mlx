@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol, cast
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -14,14 +13,6 @@ from biomedparse_mlx.decoder import BoltzFormer
 from biomedparse_mlx.mlx_types import evaluate, flatten_parameters
 from biomedparse_mlx.ontology import AttentionReplay, ModelConfig, PromptFeatures, SlicePrediction
 from biomedparse_mlx.pixel_decoder import PixelDecoder
-
-
-class SafetensorsLoader(Protocol):
-    """Typed signature for ``mx.load`` with an explicit safetensors format."""
-
-    def __call__(self, file: str, /, *, format: Literal["safetensors"]) -> dict[str, mx.array]:
-        """Load named MLX arrays from a safetensors file."""
-        ...
 
 
 @dataclass(frozen=True)
@@ -259,29 +250,25 @@ def require_finite_prediction(prediction: SlicePrediction) -> None:
 def load_network(weights_path: Path, config: ModelConfig) -> BioMedParse:
     """Build the model and load native safetensors weights.
 
-    Strict shape/key, float32 and finite-value admission: every parameter must be
-    present with the right shape and dtype, and finite. The format is explicit so
-    named symlinks to extensionless Hub blobs are supported.
+    The file must hold exactly the model's parameters, each with its shape, as
+    float32 and finite (``medmlx_core.weights.load_tensors``). The format is
+    explicit so named symlinks to extensionless Hub blobs are supported.
 
     Raises:
-        FileNotFoundError: ``weights_path`` is not a file.
-        ValueError: A tensor is not float32 or contains a non-finite value.
-            ``load_weights(strict=True)`` also rejects missing, extra or
-            mis-shaped keys.
+        AssetNotReadyError: The file cannot be read, or its tensor names, shapes,
+            dtypes or values differ from the model's.
     """
-    if not weights_path.is_file():
-        raise FileNotFoundError(f"Converted MLX weights not found: {weights_path}")
+    from medmlx_core.weights import load_tensors
+
     model = build_model(config)
-    load = cast(SafetensorsLoader, mx.load)
-    model.load_weights(list(load(str(weights_path), format="safetensors").items()), strict=True)
-    parameters = flatten_parameters(model.parameters())
-    for name, tensor in parameters:
-        if tensor.dtype != mx.float32:
-            raise ValueError(f"{name} must be float32; found {tensor.dtype}")
-    finite = [mx.all(mx.isfinite(tensor)) for _, tensor in parameters]
-    evaluate(finite)
-    for (name, _), valid in zip(parameters, finite, strict=True):
-        if not valid.item():
-            raise ValueError(f"Non-finite MLX weight: {name}")
+    tensors = load_tensors(
+        weights_path,
+        model_id=config.id,
+        label="BioMedParse",
+        shapes={
+            name: tuple(tensor.shape) for name, tensor in flatten_parameters(model.parameters())
+        },
+    )
+    model.load_weights(list(tensors.items()), strict=True)
     model.eval()
     return model

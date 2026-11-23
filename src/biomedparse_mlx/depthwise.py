@@ -13,12 +13,10 @@ threadgroup memory before the multiply-accumulates.
 from __future__ import annotations
 
 from functools import cache
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 import mlx.core as mx
-
-if TYPE_CHECKING:
-    from medmlx_core.typing import MetalKernel
+from medmlx_core.typing import MetalKernel, MlxRuntime
 
 # One threadgroup covers 8 output rows x 8 columns x 8 channels; one simdgroup per channel.
 _ROWS = 8
@@ -80,14 +78,11 @@ for (int r = 0; r < TY && y0 + r < H; ++r) {{
 
 @cache
 def _kernel() -> MetalKernel:
-    return cast(
-        "MetalKernel",
-        mx.fast.metal_kernel(
-            name="biomedparse_depthwise_implicit_gemm",
-            input_names=["values", "weight", "sizes"],
-            output_names=["out"],
-            source=_SOURCE,
-        ),
+    return cast(MlxRuntime, mx).fast.metal_kernel(
+        name="biomedparse_depthwise_implicit_gemm",
+        input_names=["values", "weight", "sizes"],
+        output_names=["out"],
+        source=_SOURCE,
     )
 
 

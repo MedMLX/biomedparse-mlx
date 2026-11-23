@@ -349,8 +349,10 @@ class RunReceipt:
     """Provenance and settings of one run, serialized to ``run.json``.
 
     ``shape`` is the output label array shape (the mask array shape for 2D input).
-    ``elapsed_seconds`` is wall-clock time from the start of the run to just after
-    the ``segmentation.npz`` write, so it includes model loading and inference.
+    ``elapsed_seconds`` is wall-clock time from reading the input to the finished
+    segmentation: it includes input loading, model loading, inference and
+    postprocessing, but not the automatic weights download before it or the
+    output writes after it.
     """
 
     model: str

@@ -83,19 +83,19 @@ WEIGHTS_NAME = "biomedparse-v2.safetensors"
 TOKENIZER_NAME = "tokenizer.json"
 
 
-def _assets(folder: Path) -> tuple[Path, Path]:
+def _assets(weights_path: PathLike | None) -> tuple[Path, Path]:
     """Return the weights and tokenizer files of a model folder, which must hold both."""
     from medmlx_core.errors import AssetNotReadyError
+    from medmlx_core.weights import weights_file
 
-    # Keep the named snapshot link; MLX picks the loader from the file suffix.
-    files = (folder / WEIGHTS_NAME).absolute(), (folder / TOKENIZER_NAME).absolute()
-    for path in files:
-        if not path.is_file():
-            raise AssetNotReadyError(
-                f"BioMedParse model folder lacks {path.name}: {folder}",
-                hint="Omit weights_path to download it, or run medmlx setup biomedparse-v2.",
-            )
-    return files
+    weights = weights_file(model_config().id, weights_path, WEIGHTS_NAME)
+    tokenizer = weights.parent / TOKENIZER_NAME
+    if not tokenizer.is_file():
+        raise AssetNotReadyError(
+            f"BioMedParse model folder lacks {TOKENIZER_NAME}: {weights.parent}",
+            hint="Omit weights_path to download it, or run medmlx setup biomedparse-v2.",
+        )
+    return weights, tokenizer
 
 
 def output_artifacts(
@@ -223,7 +223,7 @@ def run(
     """
     from medmlx_core.errors import InvalidInputError
     from medmlx_core.files import input_file, output_targets, publish
-    from medmlx_core.weights import model_folder, weights_revision
+    from medmlx_core.weights import weights_revision
 
     # Check every argument before downloading weights or loading MLX.
     for name, flag in (("overwrite", overwrite), ("instance_segmentation", instance_segmentation)):
@@ -273,10 +273,9 @@ def run(
         "instances_nifti": "instances.nii.gz",
     }
     # Every possible file is reserved, so a rerun cannot leave stale NIfTI outputs.
-    folder = None if weights_path is None else model_folder("biomedparse-v2", weights_path)
-    assets = _assets(folder) if folder is not None else ()
+    assets = () if weights_path is None else _assets(weights_path)
     targets = output_targets(output_dir, files, overwrite=overwrite, inputs=[source, *assets])
-    weights, tokenizer = assets or _assets(model_folder("biomedparse-v2", None))
+    weights, tokenizer = assets or _assets(None)
 
     import numpy as np
 
@@ -318,8 +317,10 @@ def run(
         )
         nifti: dict[str, Callable[[Path], None]] = {}
     else:
+        from medmlx_core.volumes import write_volume
+
         from biomedparse_mlx.pipeline import segment_volume
-        from biomedparse_mlx.volume import load_nifti_volume, load_volume, save_nifti_labels
+        from biomedparse_mlx.volume import load_nifti_volume, load_volume
 
         if windowing is not None:
             volume, affine = load_nifti_volume(source, modality=windowing[0], ct_site=windowing[1])
@@ -357,10 +358,12 @@ def run(
         if affine is not None:
             grid = affine
             labels_map = result.labels
-            nifti["mask_nifti"] = lambda path: save_nifti_labels(labels_map, grid, path)
+            nifti["mask_nifti"] = lambda path: write_volume(path, labels_map, grid, dtype=np.uint16)
             if write_instances and result.instances is not None:
                 instances = result.instances
-                nifti["instances_nifti"] = lambda path: save_nifti_labels(instances, grid, path)
+                nifti["instances_nifti"] = lambda path: write_volume(
+                    path, instances, grid, dtype=np.uint16
+                )
     details = asdict(receipt)
     writes: dict[Path, Callable[[Path], object]] = {
         targets["mask"]: lambda path: np.savez_compressed(path, allow_pickle=False, **arrays),

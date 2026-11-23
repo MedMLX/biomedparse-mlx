@@ -38,11 +38,10 @@ authors = [
 ]
 requires-python = ">=3.13,<3.14"
 dependencies = [
-  "medmlx-core>=0.3,<0.4",
+  "medmlx-core[nifti]>=0.3.2,<0.4",
   "mlx==0.32.4; platform_system == 'Darwin' and platform_machine == 'arm64'",
   "numpy>=2,<3",
   "tokenizers>=0.22,<0.23",
-  "nibabel>=5.3,<6",
   "pillow>=13,<14",
   "pydicom>=3,<4",
   "scikit-image>=0.25,<1",

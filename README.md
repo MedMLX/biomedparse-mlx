@@ -90,13 +90,15 @@ The slicing axis follows upstream's fixed shape heuristic.
 
 ```bash
 biomedparse-mlx segment \
-  --image scan.npy --weights weights \
-  --prompt 'Visualization of the liver in abdominal CT imaging' --label 6 \
+  --image-path scan.npy --weights-path weights \
+  --prompt 'Visualization of the liver in abdominal CT imaging' --labels 6 \
   --output-dir outputs/liver
 ```
 
-`segment-2d` does the same for a 2D image. Repeat `--prompt` and `--label` for several
-structures; the other options mirror the `run` arguments.
+`segment-2d` does the same for a 2D image and takes no `--slice-batch-size` or
+`--instance-segmentation`. Give several values after `--prompt` and `--labels` for several
+structures; the other options are the `run` arguments with hyphens, and boolean options
+take `--overwrite` or `--no-overwrite`.
 
 ### Python API
 
