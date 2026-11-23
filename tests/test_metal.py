@@ -86,6 +86,7 @@ def test_strict_loader_rejects_other_formats_and_missing_tensors(
 ) -> None:
     """Load saved safetensors strictly; reject NPZ weights and a missing tensor."""
     import mlx.core as mx
+    from medmlx_core.errors import AssetNotReadyError
 
     from biomedparse_mlx.mlx_types import flatten_parameters
     from biomedparse_mlx.model import build_model, load_network
@@ -96,7 +97,7 @@ def test_strict_loader_rejects_other_formats_and_missing_tensors(
     load_network(weights, tiny_config)
     legacy = tmp_path / "tiny.npz"
     model.save_weights(str(legacy))
-    with pytest.raises(RuntimeError):
+    with pytest.raises(AssetNotReadyError):
         load_network(legacy, tiny_config)
     parameters = dict(flatten_parameters(model.parameters()))
     parameters.pop("pixel_mean")
@@ -107,7 +108,7 @@ def test_strict_loader_rejects_other_formats_and_missing_tensors(
             ...
 
     cast(Writer, callable_member(mx, "save_safetensors"))(str(weights), parameters)
-    with pytest.raises(ValueError):
+    with pytest.raises(AssetNotReadyError):
         load_network(weights, tiny_config)
 
 

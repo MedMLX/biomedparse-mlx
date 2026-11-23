@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -57,86 +56,25 @@ def load_nifti_volume(
     slicing axis is chosen the same way as the rest of this package, by shape.
     Returns the modality-normalized ``Volume`` (float32 in 0..255, same array
     shape and axis order as the file) plus the source affine expressed in mm, so a
-    caller can write labels on the same physical grid with ``save_nifti_labels``.
-    Unspecified spatial units are assumed to be mm; metres and microns are converted.
+    caller can write labels on the same physical grid with
+    ``medmlx_core.volumes.write_volume``. Unspecified spatial units are assumed to
+    be mm; meters and microns are converted.
 
     Raises:
-        FileNotFoundError: ``path`` is not a file.
-        ValueError: The image or its units are invalid, voxels are complex or
-            non-finite, the affine is non-finite or singular, or windowing fails
-            (see :func:`normalize_intensity_slice`).
+        InvalidInputError: ``path`` is missing, or ``medmlx_core.volumes.read_volume``
+            rejects the file, or windowing fails (see
+            :func:`normalize_intensity_slice`).
     """
-    from biomedparse_mlx._nifti import ImageFileError, nib
+    from medmlx_core.volumes import read_volume
 
-    if not path.is_file():
-        raise FileNotFoundError(f"Input NIfTI not found: {path}")
-    try:
-        image = nib.load(path.as_posix())
-    except (OSError, ImageFileError) as error:
-        raise ValueError(f"Invalid input NIfTI: {path}") from error
-    # NIfTI affine values use the header's spatial unit, including translation.
-    spatial_unit = int(image.header["xyzt_units"]) & 0x07
-    units_to_mm = {0: 1.0, 1: 1000.0, 2: 1.0, 3: 0.001}
-    if spatial_unit not in units_to_mm:
-        raise ValueError("Input NIfTI has invalid spatial units")
-    # NiBabel applies scl_slope/scl_inter here; unscaled data keeps its stored
-    # dtype (for example int16 CT) instead of a full-volume float64 copy. Each
-    # windowed slice is converted to float64 separately, which gives the same
-    # values as converting the whole volume first.
-    data = np.asanyarray(image.dataobj)
-    if data.dtype.kind not in "biuf":
-        raise ValueError("Input NIfTI must contain real intensities")
-    # Reject empty axes here: axis_from_shape and per-slice windowing run before
-    # Volume's own nonempty check.
-    if data.ndim != 3 or min(data.shape) < 1:
-        raise ValueError(
-            f"Input NIfTI must be a single nonempty 3D volume; got shape {data.shape}"
-        )
-    if not _finite_as_float64(data):
-        raise ValueError("Input NIfTI contains non-finite voxels")
-    affine = np.array(image.affine, dtype=np.float64, copy=True)
-    if affine.shape != (4, 4) or not np.isfinite(affine).all():
-        raise ValueError("Input NIfTI affine must be a finite 4x4 matrix")
-    affine[:3, :] *= units_to_mm[spatial_unit]
-    if not np.isfinite(affine).all() or np.linalg.matrix_rank(affine[:3, :3]) < 3:
-        raise ValueError("Input NIfTI affine must define an invertible grid in mm")
+    # Keep the stored dtype (for example int16 CT) instead of a full-volume float64
+    # copy: each windowed slice is converted to float64 separately, which gives the
+    # same values as converting the whole volume first.
+    image = read_volume(path, role="image_path", dtype=None)
+    data, affine = image.data, image.affine
     axis = axis_from_shape((data.shape[0], data.shape[1], data.shape[2]))
-    # Booleans also convert to float64 0/1 slices, as before.
-    real = cast(NDArray[np.floating | np.integer], data)
-    normalized = normalize_volume_slices(real, axis, modality=modality, ct_site=ct_site)
+    normalized = normalize_volume_slices(data, axis, modality=modality, ct_site=ct_site)
     return Volume(normalized), affine
-
-
-def _finite_as_float64(data: NDArray[np.generic]) -> bool:
-    """Whether every voxel stays finite after conversion to float64.
-
-    Integers and floats up to 64 bits convert finite values to finite float64, so
-    their own ``isfinite`` decides. Wider floats (``longdouble``) can overflow
-    to infinity in float64, so they are checked one converted slice at a time.
-    """
-    if data.dtype.kind in "biu":
-        return True
-    if data.dtype.itemsize <= 8:
-        return bool(np.isfinite(data).all())
-    return all(np.isfinite(plane.astype(np.float64)).all() for plane in data)
-
-
-def save_nifti_labels(labels: NDArray[np.uint16], affine: NDArray[np.float64], path: Path) -> None:
-    """Write segmentation labels back on the source NIfTI grid.
-
-    The supplied affine is in mm. Upstream writes no NIfTI; this preserves the
-    input's physical geometry. Both sform and qform are written with code 1;
-    sform retains the supplied affine within NIfTI precision, while qform cannot
-    represent shear and NiBabel removes it. Labels are written as uint16 (NIfTI-1
-    datatype code 512), matching ``Prompt.label``'s full 1..65535 range.
-    """
-    from biomedparse_mlx._nifti import nib
-
-    image = nib.Nifti1Image(labels.astype(np.uint16), affine)
-    image.header.set_xyzt_units("mm")
-    image.set_sform(affine, code=1)
-    image.set_qform(affine, code=1)
-    nib.save(image, path.as_posix())
 
 
 def square_padding(height: int, width: int) -> tuple[tuple[int, int], tuple[int, int]]:

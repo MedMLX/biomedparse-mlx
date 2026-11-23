@@ -1,75 +1,42 @@
-"""Thin CLI projection of the inference actions."""
+"""Command-line projection of ``run``: ``segment`` for volumes, ``segment-2d`` for images."""
 
 from __future__ import annotations
 
 import argparse
-import json
+import sys
+from functools import partial
+from importlib.metadata import version
+
+from medmlx_core.cli import add_options, call, execute
+
+from biomedparse_mlx.medmlx import run
+
+PROG = "biomedparse-mlx"
 
 
 def main() -> None:
-    """Entry point of ``biomedparse-mlx``: ``segment`` and ``segment-2d``.
+    """Entry point of ``biomedparse-mlx``.
 
-    Prints the action's result as JSON. An OS, value, runtime or cancellation error
-    is reported as ``ErrorType: message`` and exits with status 1. ``segment-2d``
-    takes no ``--slice-batch-size`` or ``--instance-segmentation`` option.
+    Both subcommands take their options from ``run``. ``segment-2d`` binds
+    ``slice_batch_size`` and ``instance_segmentation``, which do not apply to a
+    single image, so it has no such options.
     """
-    parser = argparse.ArgumentParser(description="BioMedParse v2 native MLX inference")
+    parser = argparse.ArgumentParser(prog=PROG, description="BioMedParse v2 native MLX inference")
+    parser.add_argument("--version", action="version", version=version(PROG))
     commands = parser.add_subparsers(dest="command", required=True)
-    infer = commands.add_parser(
+    volume = commands.add_parser(
         "segment",
         help="Segment a volume: upstream-preprocessed .npy/.npz, or raw .nii/.nii.gz "
         "windowed with --modality/--ct-site",
     )
-    infer.add_argument("--image", required=True)
-    infer.add_argument("--weights", help="Model folder; omitted downloads the MedMLX model")
-    infer.add_argument("--output-dir", required=True)
-    infer.add_argument("--prompt", action="append", required=True)
-    infer.add_argument("--label", type=int, action="append")
-    infer.add_argument("--slice-batch-size", type=int, default=2)
-    infer.add_argument("--prompt-batch-size", type=int)
-    infer.add_argument("--existence-threshold", type=float, default=0.5)
-    infer.add_argument("--seed", type=int, default=0)
-    infer.add_argument("--modality", choices=("ct", "other"))
-    infer.add_argument("--ct-site")
-    infer.add_argument("--overwrite", action="store_true")
-    infer.add_argument("--instance-segmentation", action="store_true")
-    infer2d = commands.add_parser(
+    add_options(volume, run)
+    image = commands.add_parser(
         "segment-2d",
         help="Segment a single preprocessed 2D image (PNG/JPEG/BMP/TIFF), or a raw "
         "DICOM slice windowed with --modality/--ct-site",
     )
-    infer2d.add_argument("--image", required=True)
-    infer2d.add_argument("--weights", help="Model folder; omitted downloads the MedMLX model")
-    infer2d.add_argument("--output-dir", required=True)
-    infer2d.add_argument("--prompt", action="append", required=True)
-    infer2d.add_argument("--label", type=int, action="append")
-    infer2d.add_argument("--existence-threshold", type=float, default=0.5)
-    infer2d.add_argument("--seed", type=int, default=0)
-    infer2d.add_argument("--prompt-batch-size", type=int)
-    infer2d.add_argument("--modality", choices=("ct", "other"))
-    infer2d.add_argument("--ct-site")
-    infer2d.add_argument("--overwrite", action="store_true")
-    args = parser.parse_args()
-    try:
-        from biomedparse_mlx.medmlx import run
-
-        result = run(
-            image_path=args.image,
-            weights_path=args.weights,
-            output_dir=args.output_dir,
-            prompt=args.prompt,
-            labels=args.label,
-            slice_batch_size=args.slice_batch_size if args.command == "segment" else 2,
-            existence_threshold=args.existence_threshold,
-            seed=args.seed,
-            prompt_batch_size=args.prompt_batch_size,
-            modality=args.modality,
-            ct_site=args.ct_site,
-            overwrite=args.overwrite,
-            instance_segmentation=(
-                args.instance_segmentation if args.command == "segment" else False
-            ),
-        )
-    except (OSError, ValueError, RuntimeError, InterruptedError) as error:
-        parser.exit(1, f"{type(error).__name__}: {error}\n")
-    print(json.dumps(result, indent=2))
+    runner_2d = partial(run, slice_batch_size=2, instance_segmentation=False)
+    add_options(image, runner_2d)
+    arguments = parser.parse_args()
+    runner = run if arguments.command == "segment" else runner_2d
+    sys.exit(execute(PROG, lambda: call(runner, arguments)))

@@ -3,10 +3,9 @@
 from pathlib import Path
 
 import numpy as np
+from medmlx_core.volumes import read_volume
 from numpy.typing import NDArray
 from PIL import Image
-
-from biomedparse_mlx._nifti import nib
 
 ROOT = Path.home() / ".cache/medmlx/test-data"
 
@@ -19,22 +18,20 @@ def xray(size: tuple[int, int]) -> NDArray[np.uint8]:
 
 def ct_crop() -> NDArray[np.float32]:
     """Read and window an HCC-TACE CT crop to the model's 0..255 range."""
-    ct = np.asarray(nib.load(ROOT / "hcc_063_ct.nii.gz").dataobj, dtype=np.float32)[
-        100:104, 210:214, 55:59
-    ]
+    ct = read_volume(ROOT / "hcc_063_ct.nii.gz").data[100:104, 210:214, 55:59]
     return (np.clip(ct, -150.0, 250.0) + 150.0) * np.float32(255.0 / 400.0)
 
 
 def liver_labels() -> NDArray[np.uint16]:
     """Resize three source-aligned liver and tumor slices onto the model grid."""
-    ct = nib.load(ROOT / "hcc_063_ct.nii.gz")
-    liver = nib.load(ROOT / "hcc_063_liver.nii.gz")
-    tumor = nib.load(ROOT / "hcc_063_tumor.nii.gz")
+    ct = read_volume(ROOT / "hcc_063_ct.nii.gz")
+    liver = read_volume(ROOT / "hcc_063_liver.nii.gz", dtype=None)
+    tumor = read_volume(ROOT / "hcc_063_tumor.nii.gz", dtype=None)
     if not np.allclose(liver.affine, ct.affine) or not np.allclose(tumor.affine, ct.affine):
         raise ValueError("HCC-TACE image and mask affines differ")
-    liver_data = np.asarray(liver.dataobj, dtype=np.uint8)
-    tumor_data = np.asarray(tumor.dataobj, dtype=np.uint8)
-    if liver_data.shape != tumor_data.shape or liver_data.shape != np.asarray(ct.dataobj).shape:
+    liver_data = liver.data.astype(np.uint8)
+    tumor_data = tumor.data.astype(np.uint8)
+    if liver_data.shape != tumor_data.shape or liver_data.shape != ct.data.shape:
         raise ValueError("HCC-TACE image and mask shapes differ")
     result: list[NDArray[np.uint16]] = []
     for z in (55, 60, 65):

@@ -9,10 +9,10 @@ from typing import Protocol, cast
 
 import numpy as np
 import pytest
+from medmlx_core.volumes import read_volume
 from numpy.typing import NDArray
 from PIL import Image
 
-from biomedparse_mlx._nifti import nib
 from biomedparse_mlx.preprocessing import CT_WINDOWS, Modality, normalize_intensity_slice
 
 
@@ -22,7 +22,7 @@ class ProcessingUtils(Protocol):
     Only reachable via ``sys.path`` once the pinned checkout is located, so this
     is imported dynamically (``importlib.import_module``) rather than with a
     static ``from inference_utils.processing_utils import ...`` pyright cannot
-    resolve, exactly as ``_nifti.py``/``_dicom.py`` type the installed packages.
+    resolve, exactly as ``_dicom.py`` types the installed package.
     """
 
     CT_WINDOWS: dict[str, list[float]]
@@ -88,8 +88,8 @@ def test_normalize_intensity_slice_matches_upstream_process_intensity_image(
 
     root = Path.home() / ".cache/medmlx/test-data"
     if modality is Modality.CT:
-        ct = nib.load(root / "hcc_063_ct.nii.gz")
-        data = np.asarray(ct.dataobj, dtype=np.float64)[128:384, 128:384, 64]
+        ct = read_volume(root / "hcc_063_ct.nii.gz", dtype=np.float64)
+        data = ct.data[128:384, 128:384, 64]
     else:
         with Image.open(root / "chest_xray.jpg") as image:
             xray = np.asarray(image.convert("L"), dtype=np.float64)
