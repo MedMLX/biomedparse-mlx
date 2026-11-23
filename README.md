@@ -2,7 +2,7 @@
 
 # biomedparse-mlx
 
-Segment 3D medical images from text prompts with Microsoft BioMedParse v2 and native MLX.
+Segment 3D medical images from text prompts with Microsoft BiomedParse v2 and native MLX.
 
 [![PyPI](https://img.shields.io/pypi/v/biomedparse-mlx)](https://pypi.org/project/biomedparse-mlx/)
 [![Python](https://img.shields.io/pypi/pyversions/biomedparse-mlx)](https://pypi.org/project/biomedparse-mlx/)
@@ -108,7 +108,6 @@ structures; the other options mirror the `run` arguments.
   without recomputing the backbone. Features from another model instance are rejected.
 - Prompt batching bounds prompt-specific decoder activations and random-sampling
   fields, not total memory. Image features are shared by all prompts.
-- Inference requires Apple Silicon with Metal.
 
 ## Use with MedMLX
 
@@ -127,4 +126,4 @@ For Codex, use `codex mcp add medmlx -- "$MEDMLX" serve --root "$HOME/medmlx-wor
 
 ## License
 
-[Apache-2.0](https://github.com/MedMLX/biomedparse-mlx/blob/v0.2.0/LICENSE). See [third-party notices](https://github.com/MedMLX/biomedparse-mlx/blob/v0.2.0/THIRD_PARTY_NOTICES.md). Model weights retain their publisher terms. BioMedParse weights are CC-BY-NC-SA-4.0.
+[Apache-2.0](https://github.com/MedMLX/biomedparse-mlx/blob/v0.2.0/LICENSE). See [third-party notices](https://github.com/MedMLX/biomedparse-mlx/blob/v0.2.0/THIRD_PARTY_NOTICES.md). Model weights retain their publisher terms. BiomedParse weights are CC-BY-NC-SA-4.0.
