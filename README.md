@@ -6,7 +6,7 @@ Segment 3D medical images from text prompts with Microsoft BiomedParse v2 and na
 
 [![PyPI](https://img.shields.io/pypi/v/biomedparse-mlx)](https://pypi.org/project/biomedparse-mlx/)
 [![Python](https://img.shields.io/pypi/pyversions/biomedparse-mlx)](https://pypi.org/project/biomedparse-mlx/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue)](https://github.com/MedMLX/biomedparse-mlx/blob/v0.2.0/LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue)](https://github.com/MedMLX/biomedparse-mlx/blob/v0.3.0/LICENSE)
 [![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-MLX-black?logo=apple)](https://github.com/ml-explore/mlx)
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97_Hugging_Face-weights-yellow)](https://huggingface.co/MedMLX/biomedparse-v2-mlx)
 [![MedMLX](https://img.shields.io/badge/MedMLX-runtime-A51C30)](https://github.com/MedMLX/medmlx)
@@ -28,7 +28,7 @@ Segment 3D medical images from text prompts with Microsoft BiomedParse v2 and na
 ```bash
 uv venv --python 3.13
 source .venv/bin/activate
-uv pip install "biomedparse-mlx>=0.2.0"
+uv pip install "biomedparse-mlx>=0.3.0"
 ```
 
 ## Run
@@ -128,4 +128,4 @@ For Codex, use `codex mcp add medmlx -- "$MEDMLX" serve --root "$HOME/medmlx-wor
 
 ## License
 
-[Apache-2.0](https://github.com/MedMLX/biomedparse-mlx/blob/v0.2.0/LICENSE). See [third-party notices](https://github.com/MedMLX/biomedparse-mlx/blob/v0.2.0/THIRD_PARTY_NOTICES.md). Model weights retain their publisher terms. BiomedParse weights are CC-BY-NC-SA-4.0.
+[Apache-2.0](https://github.com/MedMLX/biomedparse-mlx/blob/v0.3.0/LICENSE). See [third-party notices](https://github.com/MedMLX/biomedparse-mlx/blob/v0.3.0/THIRD_PARTY_NOTICES.md). Model weights retain their publisher terms. BiomedParse weights are CC-BY-NC-SA-4.0.
