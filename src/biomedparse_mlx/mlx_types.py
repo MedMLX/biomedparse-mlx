@@ -6,34 +6,19 @@ The runtime functions and parameter tree remain unchanged.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from typing import Protocol, cast
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Protocol, cast
 
 import mlx.core as mx
 import mlx.nn as nn
 import mlx.utils as utils
-import numpy as np
-from numpy.typing import NDArray
 
 from biomedparse_mlx.dependency_types import callable_member
 
+if TYPE_CHECKING:
+    from medmlx_core.typing import ArrayEvaluator, ArrayFactory
+
 type ParameterTree = mx.array | dict[str, ParameterTree] | list[ParameterTree]
-
-
-class ArrayFactory(Protocol):
-    """Typed signature for MLX's NumPy-to-array constructor."""
-
-    def __call__(self, val: NDArray[np.generic], dtype: mx.Dtype | None = None) -> mx.array:
-        """Create an MLX array from NumPy data with an optional dtype."""
-        ...
-
-
-class ArrayEvaluator(Protocol):
-    """Typed signature for ``mx.eval`` over arrays and nested array sequences."""
-
-    def __call__(self, *args: mx.array | Sequence[mx.array]) -> None:
-        """Evaluate the supplied MLX arrays and array sequences."""
-        ...
 
 
 class ArrayFunction(Protocol):
@@ -59,8 +44,8 @@ class ArrayCompiler(Protocol):
 
 
 # MLX accepts NumPy's DLPack arrays, and eval accepts nested array sequences.
-from_numpy = cast(ArrayFactory, mx.array)
-evaluate = cast(ArrayEvaluator, callable_member(mx, "eval"))
+from_numpy = cast("ArrayFactory", mx.array)
+evaluate = cast("ArrayEvaluator", callable_member(mx, "eval"))
 compile_array_function = cast(ArrayCompiler, callable_member(mx, "compile"))
 gelu = nn.gelu
 relu = nn.relu
