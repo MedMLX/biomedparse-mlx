@@ -1,4 +1,4 @@
-"""Repository-used MLX 0.32.4 neural-network APIs, from the installed source.
+"""Repository-used MLX 0.32.5 neural-network APIs, from the installed source.
 
 Covers mlx/nn/layers/base.py, activations.py, convolution.py, embedding.py,
 linear.py and normalization.py. Only the members this repository uses are
